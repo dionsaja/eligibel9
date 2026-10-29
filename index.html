@@ -241,78 +241,66 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   <script>
-    // Bridge satu-file: frontend memanggil Google Apps Script Web App langsung dengan fetch.
-    // PENTING: isi GAS_API_KEY dengan nilai Script Properties GAS_API_KEY di Apps Script.
-    // Kunci yang ditaruh di frontend dapat dilihat pengunjung; untuk keamanan produksi,
-    // gunakan proxy server-side. Permintaan lintas domain juga bergantung pada dukungan CORS GAS.
-    (function installAppsScriptBridge() {
-      window.google = window.google || {};
-      window.google.script = window.google.script || {};
+    // Polyfill / Mock for google.script.run when running outside Google Apps Script environment
+    
+    // --- VERCEL GAS REST API WRAPPER ---
+    // GANTI URL DI BAWAH DENGAN URL WEB APP GOOGLE APPS SCRIPT ANDA
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwzoD0V_0fbjt_W4Ui3fCo8LejJujjcI5dv8SwZM9tlDUAG42nhgTUErn-SykvCwDU3tQ/exec";
 
-      const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbx4rCxCcr29cP3hZXulgUQjI1ntqNByzwKLSL078Aag_GHvTdJ4Yr7kr5mNermMIU_ATQ/exec';
-      const GAS_API_KEY = 'GANTI_DENGAN_GAS_API_KEY';
-      const allowedMethods = new Set([
-        'loginUser', 'getDashboardData', 'getData', 'saveBulkData', 'generateRanking'
-      ]);
+    if (typeof google === 'undefined') {
+      window.google = {};
+    }
 
-      class AppsScriptRunBridge {
-        constructor() { this.successHandler = null; this.failureHandler = null; }
-        withSuccessHandler(fn) { this.successHandler = fn; return this; }
-        withFailureHandler(fn) { this.failureHandler = fn; return this; }
-
-        _invoke(method, args) {
-          if (!allowedMethods.has(method)) {
-            const error = new Error('Metode backend tidak diizinkan: ' + method);
-            if (this.failureHandler) this.failureHandler(error);
-            return;
+    google.script = {
+      run: new Proxy({}, {
+        get: function(target, prop) {
+          if (prop === 'withSuccessHandler') {
+            return function(cb) { return createRunObject(cb, null); };
           }
-          if (!GAS_API_KEY || GAS_API_KEY === 'GANTI_DENGAN_GAS_API_KEY') {
-            const error = new Error('GAS_API_KEY belum diatur di index.html.');
-            if (this.failureHandler) this.failureHandler(error);
-            return;
+          if (prop === 'withFailureHandler') {
+            return function(cb) { return createRunObject(null, cb); };
           }
-
-          fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            // text/plain menghindari preflight OPTIONS pada kebanyakan browser.
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ method, args, apiKey: GAS_API_KEY }),
-            redirect: 'follow'
-          })
-          .then(async response => {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            const text = await response.text();
-            let payload;
-            try { payload = JSON.parse(text); }
-            catch (_) { throw new Error('Respons Apps Script bukan JSON. Periksa deployment doPost(e).'); }
-            if (payload && payload.success === false && payload.message) {
-              // loginUser juga dapat mengembalikan success:false untuk kredensial salah;
-              // biarkan hasil metode diteruskan ke handler login.
-              if (payload.message === 'Akses API ditolak.') throw new Error(payload.message);
-            }
-            return payload;
-          })
-          .then(result => { if (this.successHandler) this.successHandler(result); })
-          .catch(error => {
-            console.error('Koneksi Google Apps Script gagal:', error);
-            if (this.failureHandler) this.failureHandler(error);
-          });
+          return function(...args) {
+            createRunObject(null, null)[prop](...args);
+          };
         }
-      }
+      })
+    };
 
-      ['loginUser', 'getDashboardData', 'getData', 'saveBulkData', 'generateRanking'].forEach(method => {
-        AppsScriptRunBridge.prototype[method] = function(...args) {
-          this._invoke(method, args);
-        };
+    function createRunObject(successCb, failureCb) {
+      return new Proxy({}, {
+        get: function(target, actionName) {
+          if (actionName === 'withSuccessHandler') {
+            return function(cb) { return createRunObject(cb, failureCb); };
+          }
+          if (actionName === 'withFailureHandler') {
+            return function(cb) { return createRunObject(successCb, cb); };
+          }
+          return function(...args) {
+            fetch(GAS_API_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({ action: actionName, args: args })
+            })
+            .then(res => res.json())
+            .then(res => {
+              if (res.status === 'success') {
+                if (successCb) successCb(res.data);
+              } else {
+                if (failureCb) failureCb(new Error(res.message));
+                else console.error(res.message);
+              }
+            })
+            .catch(err => {
+              if (failureCb) failureCb(err);
+              else console.error(err);
+            });
+          };
+        }
       });
-
-      Object.defineProperty(window.google.script, 'run', {
-        configurable: true,
-        get: () => new AppsScriptRunBridge()
-      });
-    })();
-
-    let user = null;
+    }
+    // -----------------------------------
+let user = null;
     const modal = new bootstrap.Modal(document.getElementById('statusModal'));
 
     function showLoading(show) { document.getElementById('loading').style.display = show ? 'flex' : 'none'; }
