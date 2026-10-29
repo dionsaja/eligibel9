@@ -241,13 +241,16 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   <script>
-    // Bridge frontend Vercel -> /api/gas -> Google Apps Script backend.
-    // Backend URL dikonfigurasi aman melalui Environment Variables Vercel,
-    // sehingga tidak perlu memanggil script.google.com langsung dari browser.
+    // Bridge satu-file: frontend memanggil Google Apps Script Web App langsung dengan fetch.
+    // PENTING: isi GAS_API_KEY dengan nilai Script Properties GAS_API_KEY di Apps Script.
+    // Kunci yang ditaruh di frontend dapat dilihat pengunjung; untuk keamanan produksi,
+    // gunakan proxy server-side. Permintaan lintas domain juga bergantung pada dukungan CORS GAS.
     (function installAppsScriptBridge() {
       window.google = window.google || {};
       window.google.script = window.google.script || {};
 
+      const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbx4rCxCcr29cP3hZXulgUQjI1ntqNByzwKLSL078Aag_GHvTdJ4Yr7kr5mNermMIU_ATQ/exec';
+      const GAS_API_KEY = 'GANTI_DENGAN_GAS_API_KEY';
       const allowedMethods = new Set([
         'loginUser', 'getDashboardData', 'getData', 'saveBulkData', 'generateRanking'
       ]);
@@ -263,18 +266,37 @@
             if (this.failureHandler) this.failureHandler(error);
             return;
           }
-          fetch('/api/gas', {
+          if (!GAS_API_KEY || GAS_API_KEY === 'GANTI_DENGAN_GAS_API_KEY') {
+            const error = new Error('GAS_API_KEY belum diatur di index.html.');
+            if (this.failureHandler) this.failureHandler(error);
+            return;
+          }
+
+          fetch(GAS_WEB_APP_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ method, args })
+            // text/plain menghindari preflight OPTIONS pada kebanyakan browser.
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ method, args, apiKey: GAS_API_KEY }),
+            redirect: 'follow'
           })
           .then(async response => {
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(payload.message || 'HTTP ' + response.status);
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const text = await response.text();
+            let payload;
+            try { payload = JSON.parse(text); }
+            catch (_) { throw new Error('Respons Apps Script bukan JSON. Periksa deployment doPost(e).'); }
+            if (payload && payload.success === false && payload.message) {
+              // loginUser juga dapat mengembalikan success:false untuk kredensial salah;
+              // biarkan hasil metode diteruskan ke handler login.
+              if (payload.message === 'Akses API ditolak.') throw new Error(payload.message);
+            }
             return payload;
           })
           .then(result => { if (this.successHandler) this.successHandler(result); })
-          .catch(error => { if (this.failureHandler) this.failureHandler(error); });
+          .catch(error => {
+            console.error('Koneksi Google Apps Script gagal:', error);
+            if (this.failureHandler) this.failureHandler(error);
+          });
         }
       }
 
