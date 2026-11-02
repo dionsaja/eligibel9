@@ -374,9 +374,12 @@
                 let displayValue = (c === null || c === undefined) ? "" : c;
                 
                 if (isRekap && headerName.startsWith('S') && !['SR', 'SP', 'STKA', 'SG', 'SK'].includes(headerName)) {
+                    // Di halaman Rekap, kita tidak lagi menyembunyikan (strip) mapel apa pun 
+                    // karena semuanya bisa saja diinput. Cukup berikan style abu-abu 
+                    // jika mapel tersebut bukan mapel utama kelompoknya (hanya sebagai pembeda visual).
                     const baseMapel = headerName.substring(1);
                     if (!allowedMapels.includes(baseMapel)) {
-                        cellStyle += "background-color: #f8f9fa; color: #999;"; // Angka abu-abu untuk mapel non-kelompok
+                        cellStyle += "background-color: #f8f9fa; color: #999;"; // Angka tetap tampil
                     }
                 }
 
@@ -645,20 +648,18 @@
             // Aturan 2: Kolom Mapel pada Halaman Nilai
             if (isNilai && colIndex >= 4) {
               const isMapelActiveInSemester = activeMapelsThisSemester.includes(headerName);
-              const isMapelInGroup = allowedMapels.includes(headerName);
-              const isCommonSemester = (view === 'nilai1' || view === 'nilai2'); // Sem 1 dan 2 mapel umum
 
-              // Jika Mapel tidak dicentang di Seting Mapel pada semester ini, maka otomatis terkunci
+              // Jika Mapel TIDAK dicentang (aktif) pada Setting Mapel di semester ini, kunci kolomnya
               if (!isMapelActiveInSemester) {
                 isEditable = false;
                 cellClass = "cell-disabled";
                 cellHtmlContent = "-";
               } 
-              // Jika mapel aktif, tapi BUKAN (Semester 1/2 ATAU Mapel sesuai Kelompok), maka terkunci
-              else if (!isCommonSemester && !isMapelInGroup) {
-                isEditable = false;
-                cellClass = "cell-disabled";
-                cellHtmlContent = "-";
+              // Jika mapel AKTIF, biarkan terbuka untuk semua siswa agar bisa diinput
+              else {
+                isEditable = true;
+                cellClass = "cell-editable";
+                // Jangan mengubah isi cellHtmlContent, biarkan nilai apa adanya (bisa diedit)
               }
             }
 
