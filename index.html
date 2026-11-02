@@ -245,7 +245,7 @@
     
     // --- VERCEL GAS REST API WRAPPER ---
     // GANTI URL DI BAWAH DENGAN URL WEB APP GOOGLE APPS SCRIPT ANDA
-    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwzoD0V_0fbjt_W4Ui3fCo8LejJujjcI5dv8SwZM9tlDUAG42nhgTUErn-SykvCwDU3tQ/exec";
+    const GAS_API_URL = "https://script.google.com/macros/s/GANTI_DENGAN_URL_WEB_APP_ANDA/exec";
 
     if (typeof google === 'undefined') {
       window.google = {};
@@ -451,7 +451,16 @@ let user = null;
         
         const rowsHtml = res.rows.map(r => {
             const kelompokSiswa = r[3]; 
-            const allowedMapels = rules[kelompokSiswa] || [];
+            const allowedMapels = (rules[kelompokSiswa] || []).map(m => m.toString().trim().toUpperCase());
+            
+            let mapelUmum = [];
+            for (let key in rules) {
+               if (key.trim().toUpperCase() === 'UMUM') {
+                  mapelUmum = rules[key].map(m => m.toString().trim().toUpperCase());
+                  break;
+               }
+            }
+            const allAllowedForStudent = Array.from(new Set([...allowedMapels, ...mapelUmum]));
             
             return `<tr>${r.map((c, idx) => {
                 const headerName = res.headers[idx];
@@ -460,8 +469,8 @@ let user = null;
                 let displayValue = (c === null || c === undefined) ? "" : c;
                 
                 if (isRekap && headerName.startsWith('S') && !['SR', 'SP', 'STKA', 'SG', 'SK'].includes(headerName)) {
-                    const baseMapel = headerName.substring(1);
-                    if (!allowedMapels.includes(baseMapel)) {
+                    const baseMapel = headerName.substring(1).trim().toUpperCase();
+                    if (!allAllowedForStudent.includes(baseMapel)) {
                         displayValue = "-";
                         cellStyle += "background-color: #f8f9fa; color: #ccc;";
                     }
@@ -652,7 +661,7 @@ let user = null;
       // Filter baris kosong (jika ada)
       const data = rows
         .map(row => Array.from(row.cells).map(cell => cell.innerText.trim()))
-        .filter(rowData => rowData.some(val => val !== ""));
+        .filter(rowData => rowData[0] !== ""); // Lewati baris yang kolom pertamanya kosong
       
       if (data.length === 0) return notify(false, "Peringatan", "Tidak ada data untuk disimpan.");
 
@@ -681,7 +690,10 @@ let user = null;
         showLoading(false);
         const headers = res.headers;
         const rows = res.rows;
+        
+        // Aturan validasi
         const rules = res.kelompokRules || {};
+        
         const isNilai = view.startsWith('nilai');
         const isTka = (view === 'tka');
         const isPrestasi = (view === 'prestasi');
@@ -691,34 +703,56 @@ let user = null;
         let rowsHtml = rows.map((row, rowIndex) => {
           const nis = row[0];
           const kelompokSiswa = row[3]; // Kolom Kelompok adalah indeks 3
-          const allowedMapels = rules[kelompokSiswa] || [];
+          const allowedMapels = (rules[kelompokSiswa] || []).map(m => m.toString().trim().toUpperCase());
+          
+          // Cari mapel kelompok umum (ignore case)
+          let mapelUmum = [];
+          for (let key in rules) {
+             if (key.trim().toUpperCase() === 'UMUM') {
+                mapelUmum = rules[key].map(m => m.toString().trim().toUpperCase());
+                break;
+             }
+          }
 
           let cellsHtml = row.map((cell, colIndex) => {
             const headerName = headers[colIndex];
             let isEditable = true;
             let cellClass = "cell-editable";
+            let cellHtmlContent = cell !== undefined && cell !== null ? cell : '';
 
-            // Aturan 1: NIS, Nama, Kelas, Kelompok di sheet Nilai, TKA, dan Prestasi TIDAK boleh diedit (Otomatis dari Siswa)
+            // Aturan 1: Kolom Informasi Dasar Siswa (Terkunci)
             if ((isNilai || isTka || isPrestasi) && colIndex < 4) {
               isEditable = false;
               cellClass = "cell-disabled";
             }
 
-            // Aturan 2: Mapel di sheet Nilai harus sesuai dengan kelompoknya
+            // Aturan 2: Kolom Mapel pada Halaman Nilai
             if (isNilai && colIndex >= 4) {
-              if (!allowedMapels.includes(headerName)) {
+              const isCommonSemester = (view === 'nilai1' || view === 'nilai2'); 
+              const safeHeader = headerName.toString().trim().toUpperCase();
+
+              let isOpen = false;
+              if (isCommonSemester) {
+                // Sem 1 & 2: Terbuka jika masuk di Kelompok UMUM
+                isOpen = mapelUmum.includes(safeHeader);
+              } else {
+                // Sem 3, 4, 5: Terbuka jika merupakan mapel kelompok (Umum & Khusus) siswa tsb
+                isOpen = allowedMapels.includes(safeHeader);
+              }
+
+              if (!isOpen) {
                 isEditable = false;
                 cellClass = "cell-disabled";
-                cell = "-"; // Visual tanda tidak perlu diisi
+                cellHtmlContent = "-";
               }
             }
 
             return `
               <td 
-                contenteditable="${isEditable}" 
+                ${isEditable ? 'contenteditable="true"' : ''}
                 class="${cellClass}"
                 data-header="${headerName}"
-              >${cell !== undefined && cell !== null ? cell : ''}</td>`;
+              >${cellHtmlContent}</td>`;
           }).join('');
 
           return `<tr>${cellsHtml}</tr>`;
@@ -756,6 +790,7 @@ let user = null;
         `;
       }).getData(view);
     }
+
     function downloadTemplate(view) {
       const table = document.getElementById('crud-table');
       if (!table) return;
@@ -765,14 +800,13 @@ let user = null;
         return Array.from(tr.cells).map(td => td.innerText.trim());
       });
 
-      // Gabungkan header dan baris data
       const finalData = [headers, ...rows];
-      
       const ws = XLSX.utils.aoa_to_sheet(finalData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Template");
       XLSX.writeFile(wb, `Template_${view}.xlsx`);
     }
+
     function triggerImport() {
       document.getElementById('import-input').click();
     }
@@ -788,7 +822,6 @@ let user = null;
           const workbook = XLSX.read(data, { type: 'binary' });
           const sheetName = workbook.SheetNames[0];
           const sheet = workbook.Sheets[sheetName];
-          // Mengubah sheet ke array of arrays (matrix)
           const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
           
           if (jsonData.length <= 1) {
@@ -796,14 +829,9 @@ let user = null;
             return;
           }
 
-          // Baris pertama dianggap header, baris berikutnya adalah data
           const importedHeaders = jsonData[0];
           const importedRows = jsonData.slice(1);
-
-          // Tampilkan konfirmasi atau langsung proses ke tabel
           processImportedData(importedRows);
-          
-          // Reset input file agar bisa digunakan lagi
           e.target.value = "";
         } catch (err) {
           notify(false, "Kesalahan", "Gagal membaca file: " + err.message);
@@ -817,7 +845,6 @@ let user = null;
       const tbody = table.querySelector('tbody');
       const headerCount = table.querySelectorAll('thead th').length;
 
-      // Hapus baris kosong/keterangan jika ada
       const emptyRow = tbody.querySelector('.empty-row');
       if (emptyRow) emptyRow.remove();
 
@@ -825,12 +852,11 @@ let user = null;
       let addedCount = 0;
 
       newRows.forEach(rowData => {
-        if (!rowData[0]) return; // Lewati jika NIS kosong
+        if (!rowData[0]) return; 
 
         const newNis = rowData[0].toString().trim();
         let existingRow = null;
 
-        // Cari NIS yang sama di baris yang sudah ada di tabel
         const rows = Array.from(tbody.querySelectorAll('tr'));
         for (let tr of rows) {
           const currentNis = tr.cells[0].innerText.trim();
@@ -841,16 +867,13 @@ let user = null;
         }
 
         if (existingRow) {
-          // LOGIKA REPLACE: Update isi sel pada baris yang ditemukan
           for (let i = 0; i < headerCount; i++) {
-            // Jangan ganti jika kolom diproteksi (class cell-disabled)
             if (!existingRow.cells[i].classList.contains('cell-disabled')) {
                 existingRow.cells[i].innerText = rowData[i] !== undefined ? rowData[i] : "";
             }
           }
           replacedCount++;
         } else {
-          // LOGIKA ADD NEW: Tambah baris baru jika NIS tidak ditemukan
           const tr = document.createElement('tr');
           for (let i = 0; i < headerCount; i++) {
             const td = document.createElement('td');
