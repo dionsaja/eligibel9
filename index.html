@@ -462,7 +462,7 @@ let user = null;
                 if (isRekap && headerName.startsWith('S') && !['SR', 'SP', 'STKA', 'SG', 'SK'].includes(headerName)) {
                     const baseMapel = headerName.substring(1);
                     if (!allowedMapels.includes(baseMapel)) {
-                        displayValue = "-";
+                        //displayValue = "-";
                         cellStyle += "background-color: #f8f9fa; color: #ccc;";
                     }
                 }
@@ -705,8 +705,19 @@ let user = null;
             }
 
             // Aturan 2: Mapel di sheet Nilai harus sesuai dengan kelompoknya
+            //if (isNilai && colIndex >= 4) {
+            //  if (!allowedMapels.includes(headerName)) {
+              //  isEditable = false;
+               // cellClass = "cell-disabled";
+               // cell = "-"; // Visual tanda tidak perlu diisi
+             // }
+            //}
             if (isNilai && colIndex >= 4) {
-              if (!allowedMapels.includes(headerName)) {
+              // Tambahkan pengecekan apakah ini Semester 1 atau Semester 2
+              const isCommonSemester = (view === 'nilai1' || view === 'nilai2');
+              
+              // Kolom hanya dikunci JIKA BUKAN semester 1/2 DAN mapel tidak ada di kelompok
+              if (!isCommonSemester && !allowedMapels.includes(headerName)) {
                 isEditable = false;
                 cellClass = "cell-disabled";
                 cell = "-"; // Visual tanda tidak perlu diisi
