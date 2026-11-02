@@ -19,14 +19,22 @@
       z-index: 1000; 
       display: flex;
       flex-direction: column;
-      overflow-y: auto;
-      scrollbar-width: thin;
+      overflow-y: auto; /* Mengizinkan scroll vertikal */
+      scrollbar-width: thin; /* Untuk browser Firefox */
       scrollbar-color: #34495e #1a252f;
     }
 
-    .sidebar::-webkit-scrollbar { width: 6px; }
-    .sidebar::-webkit-scrollbar-track { background: #1a252f; }
-    .sidebar::-webkit-scrollbar-thumb { background: #34495e; border-radius: 10px; }
+    /* Kustomisasi scrollbar untuk Chrome/Edge/Safari */
+    .sidebar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .sidebar::-webkit-scrollbar-track {
+      background: #1a252f;
+    }
+    .sidebar::-webkit-scrollbar-thumb {
+      background: #34495e;
+      border-radius: 10px;
+    }
     .sidebar .nav-link { color: #bdc3c7; padding: 12px 20px; border-radius: 0; border-left: 4px solid transparent; transition: 0.2s; }
     .sidebar .nav-link:hover, .sidebar .nav-link.active { background: #2c3e50; color: #fff; border-left: 4px solid #3498db;}
     .main-content { margin-left: 260px; padding: 30px; transition: 0.3s; width: calc(100% - 260px); }
@@ -35,31 +43,94 @@
     .table thead th { position: sticky; top: 0; background: #f8f9fa; color: #333; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; border-bottom: 2px solid #dee2e6; z-index: 5; white-space: nowrap; }
     .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.85); display: none; justify-content: center; align-items: center; z-index: 9999; flex-direction: column; }
     #login-page { background: linear-gradient(135deg, #2c3e50, #4ca1af); height: 100vh; display: flex; align-items: center; justify-content: center; }
-    .logo-img { width: 80px; height: 80px; object-fit: contain; margin-bottom: 1rem;}
+    .logo-img {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
+      margin-bottom: 1rem;}
+
     #print-area { display: none; }
 
     @media print {
       @page { size: portrait; margin: 1.5cm; }
-      #app-content, .no-print, .sidebar, .main-content, .loading-overlay { display: none !important; }
-      #print-area { display: block !important; width: 100%; background: white; color: black; visibility: visible !important; }
+      
+      /* Sembunyikan elemen UI aplikasi */
+      #app-content, .no-print, .sidebar, .main-content, .loading-overlay { 
+        display: none !important; 
+      }
+      
+      /* Tampilkan print-area */
+      #print-area { 
+        display: block !important; 
+        width: 100%; 
+        background: white;
+        color: black;
+        visibility: visible !important;
+      }
+
       #print-area * { visibility: visible !important; }
+
       .page-break { page-break-after: always; }
-      .kop-table { width: 100%; border-collapse: collapse; border-bottom: 3px double #000; margin-bottom: 20px; }
+      
+      /* Struktur Kop Surat yang Lebih Stabil */
+      .kop-table {
+        width: 100%;
+        border-collapse: collapse;
+        border-bottom: 3px double #000;
+        margin-bottom: 20px;
+      }
       .kop-table td { border: none !important; padding: 5px; }
       .kop-logo { width: 90px; text-align: center; }
       .kop-text { text-align: center; }
       .kop-text h4 { margin: 0; font-size: 14pt; font-weight: bold; line-height: 1.2; }
       .kop-text h3 { margin: 0; font-size: 18pt; font-weight: bold; line-height: 1.2; }
       .kop-text p { margin: 0; font-size: 10pt; }
-      .data-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-      .data-table th { background-color: #f2f2f2 !important; border: 1px solid #000 !important; padding: 8px 4px; font-size: 9pt; text-align: center; font-weight: bold; }
-      .data-table td { border: 1px solid #000 !important; padding: 6px 4px; font-size: 8.5pt; }
-      .ttd-wrapper { margin-top: 30px; width: 100%; display: block; }
-      .ttd-box { float: right; width: 250px; text-align: center; }
+
+      /* Tabel Data Laporan */
+      .data-table { 
+        width: 100%; 
+        border-collapse: collapse; 
+        margin-top: 15px; 
+      }
+      .data-table th { 
+        background-color: #f2f2f2 !important; 
+        border: 1px solid #000 !important; 
+        padding: 8px 4px; 
+        font-size: 9pt; 
+        text-align: center;
+        font-weight: bold;
+      }
+      .data-table td { 
+        border: 1px solid #000 !important; 
+        padding: 6px 4px; 
+        font-size: 8.5pt; 
+      }
+      
+      /* Area Tanda Tangan */
+      .ttd-wrapper { 
+        margin-top: 30px; 
+        width: 100%;
+        display: block;
+      }
+      .ttd-box { 
+        float: right; 
+        width: 250px; 
+        text-align: center; 
+      }
       .ttd-space { height: 75px; }
     }
     
-    .sidebar-logo-container { width: 50px; height: 50px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; padding: 5px; margin-right: 12px; }
+    .sidebar-logo-container {
+      width: 50px;
+      height: 50px;
+      background: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px;
+      margin-right: 12px;
+    }
   </style>
 </head>
 <body>
@@ -71,13 +142,17 @@
 
   <div id="print-area"></div>
 
+  <!-- Input File Tersembunyi untuk Import -->
   <input type="file" id="import-input" style="display: none;" accept=".xlsx, .xls, .csv">
 
+  <!-- Login Section -->
   <div id="login-page">
     <div class="card p-4 shadow-lg" style="width: 380px;">
       <div class="text-center mb-4">
         <img src="https://lh3.googleusercontent.com/d/1MaFJWgjCTo3BXamPI6Ipte3U2-8a-t0K=w500-h500" 
-       alt="Logo Elite" class="logo-img" style="border-radius: 12px;"
+       alt="Logo Elite" 
+       class="logo-img"
+       style="width: 80px; height: 80px; object-fit: contain; border-radius: 12px;"
        onerror="this.onerror=null; this.src='https://dummyimage.com/160x160/0d6efd/ffffff&text=Elite';">
         <h3 class="fw-bold">Si-MEli</h3>
         <p class="text-muted">Sistem Manajemen Eligibel</p>
@@ -103,13 +178,16 @@
     </div>
   </div>
 
+  <!-- Main App Section -->
   <div id="app-content" style="display: none;">
     <div class="d-flex">
+      <!-- Sidebar -->
       <nav class="sidebar">
         <div class="d-flex align-items-center mb-4 border-bottom pb-3">
           <div class="sidebar-logo-container shadow-sm">
             <img src="https://lh3.googleusercontent.com/u/0/d/1MaFJWgjCTo3BXamPI6Ipte3U2-8a-t0K=w500-h500" 
-                 alt="Logo SMAN 9 Surabaya" style="width: 100%; height: 100%; object-fit: contain;"
+                 alt="Logo SMAN 9 Surabaya" 
+                 style="width: 100%; height: 100%; object-fit: contain;"
                  onerror="this.onerror=null; this.src='https://via.placeholder.com/50?text=9';">
           </div>
           <h4 class="fw-bold mb-0">Si-MEli</h4>
@@ -117,7 +195,9 @@
             <span id="badge-role" class="badge bg-info mt-2">ADMIN</span>
           </div>
         </div>
-        <div id="nav-container" class="nav flex-column"></div>
+        <div id="nav-container" class="nav flex-column">
+          <!-- Menu Items Inject Here -->
+        </div>
         <div class="mt-auto p-4 border-top border-secondary">
           <button class="btn btn-danger btn-sm w-100" onclick="handleLogout()">
             <i class="bi bi-power"></i> LOGOUT
@@ -126,8 +206,10 @@
           Si-MEli_Ver.1.0 by Dion
         </div>
         </div>
+        
       </nav>
 
+      <!-- Content Area -->
       <main class="main-content">
         <header class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
           <h4 id="page-title" class="fw-bold mb-0">Dashboard</h4>
@@ -136,11 +218,15 @@
             <span id="display-user" class="fw-bold text-primary">Admin</span>
           </div>
         </header>
-        <div id="view-container"></div>
+        
+        <div id="view-container">
+          <!-- Dynamic Views -->
+        </div>
       </main>
     </div>
   </div>
 
+  <!-- Status Modal -->
   <div class="modal fade" id="statusModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content text-center p-4">
@@ -155,8 +241,10 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   <script>
+    // Polyfill / Mock for google.script.run when running outside Google Apps Script environment
+    
     // --- VERCEL GAS REST API WRAPPER ---
-    // GANTI URL DI BAWAH DENGAN URL WEB APP GOOGLE APPS SCRIPT ANDA!
+    // GANTI URL DI BAWAH DENGAN URL WEB APP GOOGLE APPS SCRIPT ANDA
     const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwzoD0V_0fbjt_W4Ui3fCo8LejJujjcI5dv8SwZM9tlDUAG42nhgTUErn-SykvCwDU3tQ/exec";
 
     if (typeof google === 'undefined') {
@@ -212,9 +300,7 @@
       });
     }
     // -----------------------------------
-
-    let user = null;
-    let currentView = '';
+let user = null;
     const modal = new bootstrap.Modal(document.getElementById('statusModal'));
 
     function showLoading(show) { document.getElementById('loading').style.display = show ? 'flex' : 'none'; }
@@ -296,7 +382,6 @@
     }
 
     function navigate(view) {
-      currentView = view;
       document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
       const activeNav = document.getElementById('nav-' + view);
       if(activeNav) activeNav.classList.add('active');
@@ -361,6 +446,7 @@
         showLoading(false);
         const rules = res.kelompokRules || {};
         const isRekap = (view === 'rekapnilai');
+
         let headersHtml = res.headers.map(h => `<th class="text-center">${h}</th>`).join('');
         
         const rowsHtml = res.rows.map(r => {
@@ -374,12 +460,10 @@
                 let displayValue = (c === null || c === undefined) ? "" : c;
                 
                 if (isRekap && headerName.startsWith('S') && !['SR', 'SP', 'STKA', 'SG', 'SK'].includes(headerName)) {
-                    // Di halaman Rekap, kita tidak lagi menyembunyikan (strip) mapel apa pun 
-                    // karena semuanya bisa saja diinput. Cukup berikan style abu-abu 
-                    // jika mapel tersebut bukan mapel utama kelompoknya (hanya sebagai pembeda visual).
                     const baseMapel = headerName.substring(1);
                     if (!allowedMapels.includes(baseMapel)) {
-                        cellStyle += "background-color: #f8f9fa; color: #999;"; // Angka tetap tampil
+                        displayValue = "-";
+                        cellStyle += "background-color: #f8f9fa; color: #ccc;";
                     }
                 }
 
@@ -419,7 +503,6 @@
           </div>`;
       }).getData(targetSheet);
     }
-    
     function prepareAndPrint(res) {
       const headers = res.headers;
       const rows = res.rows;
@@ -444,6 +527,7 @@
       kelompokKeys.forEach((kelompok, index) => {
         printHtml += `
           <div class="print-page-wrapper">
+            <!-- Kop Surat menggunakan Tabel agar stabil -->
             <table class="kop-table">
               <tr>
                 <td class="kop-logo">
@@ -458,7 +542,7 @@
                   <p>Telepon (031) 5342608-Faksimili (031)5477817</p>
                   <p>Laman https://sman9sby.sch.id Pos-El smanixsurabaya@gmail.com</p>
                 </td>
-                <td style="width: 90px;"></td>
+                <td style="width: 90px;"></td> <!-- Spacer seimbang -->
               </tr>
             </table>
             
@@ -485,6 +569,7 @@
               </tbody>
             </table>
 
+            <!-- Tanda Tangan -->
             <div class="ttd-wrapper">
               <div class="ttd-box">
                 <p>Surabaya, ${new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'})}</p>
@@ -512,6 +597,7 @@
       }, 800);
     }
     
+
     function exportToExcel(name) {
         const table = document.getElementById('report-table');
         const wb = XLSX.utils.table_to_book(table);
@@ -545,17 +631,12 @@
       
       for (let i = 0; i < columnCount; i++) {
         const cell = document.createElement('td');
-        if (currentView === 'mapel' && i >= 2) {
-          cell.innerHTML = `<input type="checkbox" class="form-check-input mapel-cb" checked>`;
-          cell.contentEditable = "false";
-          cell.className = "text-center align-middle";
-        } else {
-          cell.contentEditable = "true";
-          cell.innerText = "";
-        }
+        cell.contentEditable = "true";
+        cell.innerText = "";
         newRow.appendChild(cell);
       }
       
+      // Hapus baris pesan kosong jika ada
       const emptyRow = tbody.querySelector('.text-muted.italic');
       if (emptyRow) tbody.innerHTML = "";
       
@@ -568,14 +649,10 @@
       if(!table) return;
       
       const rows = Array.from(table.querySelectorAll('tbody tr'));
-      // Mapping baris tabel. Membaca teks jika teks biasa, atau Status Checkbox ("TRUE"/"FALSE") jika berbentuk checkbox
+      // Filter baris kosong (jika ada)
       const data = rows
-        .map(row => Array.from(row.cells).map(cell => {
-           const cb = cell.querySelector('input[type="checkbox"]');
-           if (cb) return cb.checked ? 'TRUE' : 'FALSE';
-           return cell.innerText.trim();
-        }))
-        .filter(rowData => rowData[0] !== ""); // Lewati baris yang kolom pertamanya kosong
+        .map(row => Array.from(row.cells).map(cell => cell.innerText.trim()))
+        .filter(rowData => rowData.some(val => val !== ""));
       
       if (data.length === 0) return notify(false, "Peringatan", "Tidak ada data untuk disimpan.");
 
@@ -604,71 +681,44 @@
         showLoading(false);
         const headers = res.headers;
         const rows = res.rows;
-        
-        // Aturan validasi (mapel berdasarkan kelompok dan aturan centang semester)
         const rules = res.kelompokRules || {};
-        const semesterRules = res.semesterRules || {};
-        
-        const isMapel = (view === 'mapel');
         const isNilai = view.startsWith('nilai');
         const isTka = (view === 'tka');
         const isPrestasi = (view === 'prestasi');
-
-        const semMatch = view.match(/^nilai(\d)$/);
-        const semNum = semMatch ? parseInt(semMatch[1]) : null;
-        const activeMapelsThisSemester = (semesterRules && semNum) ? semesterRules[semNum] : [];
 
         let headersHtml = headers.map(h => `<th class="text-center">${h}</th>`).join('');
         
         let rowsHtml = rows.map((row, rowIndex) => {
           const nis = row[0];
-          const kelompokSiswa = row[3]; 
+          const kelompokSiswa = row[3]; // Kolom Kelompok adalah indeks 3
           const allowedMapels = rules[kelompokSiswa] || [];
 
           let cellsHtml = row.map((cell, colIndex) => {
             const headerName = headers[colIndex];
             let isEditable = true;
             let cellClass = "cell-editable";
-            let cellHtmlContent = cell !== undefined && cell !== null ? cell : '';
 
-            // Fitur Baru Mapel: Render kolom Semester 1 - 5 (indeks 2 - 6) sebagai Checkbox
-            if (isMapel && colIndex >= 2) {
-              const isChecked = (cell === true || String(cell).toUpperCase() === 'TRUE' || cell === 'Ya') ? 'checked' : '';
-              cellHtmlContent = `<input type="checkbox" class="form-check-input mapel-cb" ${isChecked}>`;
-              isEditable = false;
-              cellClass = "text-center align-middle";
-            }
-
-            // Aturan 1: Kolom Informasi Dasar Siswa (Terkunci)
+            // Aturan 1: NIS, Nama, Kelas, Kelompok di sheet Nilai, TKA, dan Prestasi TIDAK boleh diedit (Otomatis dari Siswa)
             if ((isNilai || isTka || isPrestasi) && colIndex < 4) {
               isEditable = false;
               cellClass = "cell-disabled";
             }
 
-            // Aturan 2: Kolom Mapel pada Halaman Nilai
+            // Aturan 2: Mapel di sheet Nilai harus sesuai dengan kelompoknya
             if (isNilai && colIndex >= 4) {
-              const isMapelActiveInSemester = activeMapelsThisSemester.includes(headerName);
-
-              // Jika Mapel TIDAK dicentang (aktif) pada Setting Mapel di semester ini, kunci kolomnya
-              if (!isMapelActiveInSemester) {
+              if (!allowedMapels.includes(headerName)) {
                 isEditable = false;
                 cellClass = "cell-disabled";
-                cellHtmlContent = "-";
-              } 
-              // Jika mapel AKTIF, biarkan terbuka untuk semua siswa agar bisa diinput
-              else {
-                isEditable = true;
-                cellClass = "cell-editable";
-                // Jangan mengubah isi cellHtmlContent, biarkan nilai apa adanya (bisa diedit)
+                cell = "-"; // Visual tanda tidak perlu diisi
               }
             }
 
             return `
               <td 
-                ${isEditable ? 'contenteditable="true"' : ''}
+                contenteditable="${isEditable}" 
                 class="${cellClass}"
                 data-header="${headerName}"
-              >${cellHtmlContent}</td>`;
+              >${cell !== undefined && cell !== null ? cell : ''}</td>`;
           }).join('');
 
           return `<tr>${cellsHtml}</tr>`;
@@ -706,7 +756,6 @@
         `;
       }).getData(view);
     }
-
     function downloadTemplate(view) {
       const table = document.getElementById('crud-table');
       if (!table) return;
@@ -716,13 +765,14 @@
         return Array.from(tr.cells).map(td => td.innerText.trim());
       });
 
+      // Gabungkan header dan baris data
       const finalData = [headers, ...rows];
+      
       const ws = XLSX.utils.aoa_to_sheet(finalData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Template");
       XLSX.writeFile(wb, `Template_${view}.xlsx`);
     }
-
     function triggerImport() {
       document.getElementById('import-input').click();
     }
@@ -738,6 +788,7 @@
           const workbook = XLSX.read(data, { type: 'binary' });
           const sheetName = workbook.SheetNames[0];
           const sheet = workbook.Sheets[sheetName];
+          // Mengubah sheet ke array of arrays (matrix)
           const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
           
           if (jsonData.length <= 1) {
@@ -745,9 +796,14 @@
             return;
           }
 
+          // Baris pertama dianggap header, baris berikutnya adalah data
           const importedHeaders = jsonData[0];
           const importedRows = jsonData.slice(1);
+
+          // Tampilkan konfirmasi atau langsung proses ke tabel
           processImportedData(importedRows);
+          
+          // Reset input file agar bisa digunakan lagi
           e.target.value = "";
         } catch (err) {
           notify(false, "Kesalahan", "Gagal membaca file: " + err.message);
@@ -761,6 +817,7 @@
       const tbody = table.querySelector('tbody');
       const headerCount = table.querySelectorAll('thead th').length;
 
+      // Hapus baris kosong/keterangan jika ada
       const emptyRow = tbody.querySelector('.empty-row');
       if (emptyRow) emptyRow.remove();
 
@@ -768,11 +825,12 @@
       let addedCount = 0;
 
       newRows.forEach(rowData => {
-        if (!rowData[0]) return; 
+        if (!rowData[0]) return; // Lewati jika NIS kosong
 
         const newNis = rowData[0].toString().trim();
         let existingRow = null;
 
+        // Cari NIS yang sama di baris yang sudah ada di tabel
         const rows = Array.from(tbody.querySelectorAll('tr'));
         for (let tr of rows) {
           const currentNis = tr.cells[0].innerText.trim();
@@ -783,30 +841,22 @@
         }
 
         if (existingRow) {
+          // LOGIKA REPLACE: Update isi sel pada baris yang ditemukan
           for (let i = 0; i < headerCount; i++) {
+            // Jangan ganti jika kolom diproteksi (class cell-disabled)
             if (!existingRow.cells[i].classList.contains('cell-disabled')) {
-                if (currentView === 'mapel' && i >= 2) {
-                   const isChecked = (String(rowData[i]).toUpperCase() === 'TRUE') ? 'checked' : '';
-                   existingRow.cells[i].innerHTML = `<input type="checkbox" class="form-check-input mapel-cb" ${isChecked}>`;
-                } else {
-                   existingRow.cells[i].innerText = rowData[i] !== undefined ? rowData[i] : "";
-                }
+                existingRow.cells[i].innerText = rowData[i] !== undefined ? rowData[i] : "";
             }
           }
           replacedCount++;
         } else {
+          // LOGIKA ADD NEW: Tambah baris baru jika NIS tidak ditemukan
           const tr = document.createElement('tr');
           for (let i = 0; i < headerCount; i++) {
             const td = document.createElement('td');
-            if (currentView === 'mapel' && i >= 2) {
-               const isChecked = (String(rowData[i]).toUpperCase() === 'TRUE') ? 'checked' : '';
-               td.innerHTML = `<input type="checkbox" class="form-check-input mapel-cb" ${isChecked}>`;
-               td.className = "text-center align-middle";
-            } else {
-               td.contentEditable = "true";
-               td.className = "cell-editable";
-               td.innerText = rowData[i] !== undefined ? rowData[i] : "";
-            }
+            td.contentEditable = "true";
+            td.className = "cell-editable";
+            td.innerText = rowData[i] !== undefined ? rowData[i] : "";
             tr.appendChild(td);
           }
           tbody.appendChild(tr);
