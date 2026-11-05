@@ -555,6 +555,29 @@
         
         const kelompokKeys = Object.keys(groupedData);
         kelompokKeys.forEach((kelompok, index) => {
+          
+          let tbodyHtml = groupedData[kelompok].map(row => {
+            const nis = row[idxNis];
+            const nMap = nilaiMap[nis] || {};
+            
+            let rowCols = visibleHeaders.map(col => {
+              let val = "";
+              let align = "center";
+              if (col.type === 'standard') {
+                  val = row[col.index];
+                  if (col.name === 'Nama Siswa' || col.name === 'Hasil') align = "left";
+              } else if (col.type === 'nilai') {
+                  val = nMap[col.name] !== undefined ? nMap[col.name] : "";
+              }
+              if (col.name === 'SG' && !isNaN(val) && val !== "") val = parseFloat(val).toFixed(2);
+              return `<td style="text-align:${align}">${val}</td>`;
+            }).join('');
+            
+            return `<tr>${rowCols}</tr>`;
+          }).join('');
+
+          let theadHtml = visibleHeaders.map(col => `<th>${col.name}</th>`).join('');
+
           printHtml += `
             <div class="print-page-wrapper">
               <table class="kop-table">
@@ -582,27 +605,10 @@
 
               <table class="data-table">
                 <thead>
-                  <tr>${visibleHeaders.map(col => `<th>${col.name}</th>`).join('')}</tr>
+                  <tr>${theadHtml}</tr>
                 </thead>
                 <tbody>
-                  ${groupedData[kelompok].map(row => {
-                    const nis = row[idxNis];
-                    const nMap = nilaiMap[nis] || {};
-                    return `<tr>
-                      ${visibleHeaders.map(col => {
-                        let val = "";
-                        let align = "center";
-                        if (col.type === 'standard') {
-                            val = row[col.index];
-                            if (col.name === 'Nama Siswa' || col.name === 'Hasil') align = "left";
-                        } else if (col.type === 'nilai') {
-                            val = nMap[col.name] !== undefined ? nMap[col.name] : "";
-                        }
-                        if (col.name === 'SG' && !isNaN(val) && val !== "") val = parseFloat(val).toFixed(2);
-                        return `<td style="text-align:${align}">${val}</td>`;
-                      }).join('')}
-                    </tr>`;
-                  }).join('')}
+                  ${tbodyHtml}
                 </tbody>
               </table>
 
