@@ -19,118 +19,65 @@
       z-index: 1000; 
       display: flex;
       flex-direction: column;
-      overflow-y: auto; /* Mengizinkan scroll vertikal */
-      scrollbar-width: thin; /* Untuk browser Firefox */
+      overflow-y: auto; 
+      scrollbar-width: thin; 
       scrollbar-color: #34495e #1a252f;
+      transform: translateX(0);
     }
-
-    /* Kustomisasi scrollbar untuk Chrome/Edge/Safari */
-    .sidebar::-webkit-scrollbar {
-      width: 6px;
-    }
-    .sidebar::-webkit-scrollbar-track {
-      background: #1a252f;
-    }
-    .sidebar::-webkit-scrollbar-thumb {
-      background: #34495e;
-      border-radius: 10px;
-    }
+    
+    .sidebar::-webkit-scrollbar { width: 6px; }
+    .sidebar::-webkit-scrollbar-track { background: #1a252f; }
+    .sidebar::-webkit-scrollbar-thumb { background: #34495e; border-radius: 10px; }
     .sidebar .nav-link { color: #bdc3c7; padding: 12px 20px; border-radius: 0; border-left: 4px solid transparent; transition: 0.2s; }
     .sidebar .nav-link:hover, .sidebar .nav-link.active { background: #2c3e50; color: #fff; border-left: 4px solid #3498db;}
+    
     .main-content { margin-left: 260px; padding: 30px; transition: 0.3s; width: calc(100% - 260px); }
     .card { border: none; box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075); border-radius: 12px; }
     .table-responsive { max-height: 70vh; overflow: auto; border-radius: 8px; border: 1px solid #dee2e6; }
     .table thead th { position: sticky; top: 0; background: #f8f9fa; color: #333; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; border-bottom: 2px solid #dee2e6; z-index: 5; white-space: nowrap; }
+    
     .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.85); display: none; justify-content: center; align-items: center; z-index: 9999; flex-direction: column; }
     #login-page { background: linear-gradient(135deg, #2c3e50, #4ca1af); height: 100vh; display: flex; align-items: center; justify-content: center; }
-    .logo-img {
-      width: 80px;
-      height: 80px;
-      object-fit: contain;
-      margin-bottom: 1rem;}
-
+    .logo-img { width: 80px; height: 80px; object-fit: contain; margin-bottom: 1rem;}
     #print-area { display: none; }
+
+    /* Mobile Overlay */
+    .sidebar-overlay {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.5); z-index: 999; display: none;
+    }
+    .sidebar-overlay.show { display: block; }
+    .mobile-toggle { display: none; cursor: pointer; font-size: 1.5rem; }
+
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.show { transform: translateX(0); }
+      .main-content { margin-left: 0; width: 100%; padding: 15px; }
+      .mobile-toggle { display: block !important; }
+    }
 
     @media print {
       @page { size: portrait; margin: 1.5cm; }
-      
-      /* Sembunyikan elemen UI aplikasi */
-      #app-content, .no-print, .sidebar, .main-content, .loading-overlay { 
-        display: none !important; 
-      }
-      
-      /* Tampilkan print-area */
-      #print-area { 
-        display: block !important; 
-        width: 100%; 
-        background: white;
-        color: black;
-        visibility: visible !important;
-      }
-
+      #app-content, .no-print, .sidebar, .main-content, .loading-overlay { display: none !important; }
+      #print-area { display: block !important; width: 100%; background: white; color: black; visibility: visible !important; }
       #print-area * { visibility: visible !important; }
-
       .page-break { page-break-after: always; }
-      
-      /* Struktur Kop Surat yang Lebih Stabil */
-      .kop-table {
-        width: 100%;
-        border-collapse: collapse;
-        border-bottom: 3px double #000;
-        margin-bottom: 20px;
-      }
+      .kop-table { width: 100%; border-collapse: collapse; border-bottom: 3px double #000; margin-bottom: 20px; }
       .kop-table td { border: none !important; padding: 5px; }
       .kop-logo { width: 90px; text-align: center; }
       .kop-text { text-align: center; }
       .kop-text h4 { margin: 0; font-size: 14pt; font-weight: bold; line-height: 1.2; }
       .kop-text h3 { margin: 0; font-size: 18pt; font-weight: bold; line-height: 1.2; }
       .kop-text p { margin: 0; font-size: 10pt; }
-
-      /* Tabel Data Laporan */
-      .data-table { 
-        width: 100%; 
-        border-collapse: collapse; 
-        margin-top: 15px; 
-      }
-      .data-table th { 
-        background-color: #f2f2f2 !important; 
-        border: 1px solid #000 !important; 
-        padding: 8px 4px; 
-        font-size: 9pt; 
-        text-align: center;
-        font-weight: bold;
-      }
-      .data-table td { 
-        border: 1px solid #000 !important; 
-        padding: 6px 4px; 
-        font-size: 8.5pt; 
-      }
-      
-      /* Area Tanda Tangan */
-      .ttd-wrapper { 
-        margin-top: 30px; 
-        width: 100%;
-        display: block;
-      }
-      .ttd-box { 
-        float: right; 
-        width: 250px; 
-        text-align: center; 
-      }
+      .data-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+      .data-table th { background-color: #f2f2f2 !important; border: 1px solid #000 !important; padding: 8px 4px; font-size: 9pt; text-align: center; font-weight: bold; }
+      .data-table td { border: 1px solid #000 !important; padding: 6px 4px; font-size: 8.5pt; }
+      .ttd-wrapper { margin-top: 30px; width: 100%; display: block; }
+      .ttd-box { float: right; width: 250px; text-align: center; }
       .ttd-space { height: 75px; }
     }
     
-    .sidebar-logo-container {
-      width: 50px;
-      height: 50px;
-      background: white;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 5px;
-      margin-right: 12px;
-    }
+    .sidebar-logo-container { width: 50px; height: 50px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; padding: 5px; margin-right: 12px; }
   </style>
 </head>
 <body>
@@ -140,16 +87,15 @@
     <span class="fw-bold">Sedang Memproses...</span>
   </div>
 
+  <div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
   <div id="print-area"></div>
-
-  <!-- Input File Tersembunyi untuk Import -->
   <input type="file" id="import-input" style="display: none;" accept=".xlsx, .xls, .csv">
 
   <!-- Login Section -->
   <div id="login-page">
     <div class="card p-4 shadow-lg" style="width: 380px;">
       <div class="text-center mb-4">
-        <img src="https://lh3.googleusercontent.com/d/15eEThVZOgDMM0G3GRKXMQjBOtUyn7KRh" 
+        <img src="https://drive.google.com/uc?export=view&id=15eEThVZOgDMM0G3GRKXMQjBOtUyn7KRh" 
        alt="Logo Elite" 
        class="logo-img"
        style="width: 80px; height: 80px; object-fit: contain; border-radius: 12px;"
@@ -185,7 +131,7 @@
       <nav class="sidebar">
         <div class="d-flex align-items-center mb-4 border-bottom pb-3">
           <div class="sidebar-logo-container shadow-sm">
-            <img src="https://lh3.googleusercontent.com/d/15eEThVZOgDMM0G3GRKXMQjBOtUyn7KRh" 
+            <img src="https://drive.google.com/uc?export=view&id=15eEThVZOgDMM0G3GRKXMQjBOtUyn7KRh" 
                  alt="Logo SMAN 9 Surabaya" 
                  style="width: 100%; height: 100%; object-fit: contain;"
                  onerror="this.onerror=null; this.src='https://via.placeholder.com/50?text=9';">
@@ -202,18 +148,20 @@
           <button class="btn btn-danger btn-sm w-100" onclick="handleLogout()">
             <i class="bi bi-power"></i> LOGOUT
           </button>
-          <div class="mt-auto pt-4 border-top opacity-50 small">
-          Si-MEli_Ver.1.0 by Dion
+          <div class="mt-auto pt-4 border-top opacity-50 small text-center">
+            Si-MEli_Ver.1.0 by Dion
+          </div>
         </div>
-        </div>
-        
       </nav>
 
       <!-- Content Area -->
       <main class="main-content">
-        <header class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
-          <h4 id="page-title" class="fw-bold mb-0">Dashboard</h4>
-          <div class="text-end">
+        <header class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4 pb-3 border-bottom">
+          <div class="d-flex align-items-center mb-3 mb-md-0">
+            <i class="bi bi-list mobile-toggle me-3 text-primary" onclick="toggleSidebar()"></i>
+            <h4 id="page-title" class="fw-bold mb-0">Dashboard</h4>
+          </div>
+          <div class="text-start text-md-end">
             <span class="text-muted small">Selamat Datang, </span>
             <span id="display-user" class="fw-bold text-primary">Admin</span>
           </div>
@@ -303,6 +251,11 @@
     let currentView = '';
     const modal = new bootstrap.Modal(document.getElementById('statusModal'));
 
+    function toggleSidebar() {
+      document.querySelector('.sidebar').classList.toggle('show');
+      document.getElementById('sidebar-overlay').classList.toggle('show');
+    }
+
     function showLoading(show) { document.getElementById('loading').style.display = show ? 'flex' : 'none'; }
 
     function notify(success, title, msg) {
@@ -358,7 +311,8 @@
           {id:'bobot', icon:'sliders', label:'Seting Bobot'},
           {id:'setingurutan', icon:'sort-down', label:'Seting Urutan'},
           {id:'rekapnilai', icon:'table', label:'Rekap Nilai'},
-          {id:'peringkatlokal', icon:'award', label:'Peringkat'}
+          {id:'peringkatlokal', icon:'award', label:'Peringkat Lokal'},
+          {id:'peringkatglobal', icon:'globe', label:'Peringkat Global'}
         ],
         operator: [
           {id:'dashboard', icon:'grid-1x2', label:'Dashboard'},
@@ -370,7 +324,8 @@
           {id:'tka', icon:'file-earmark-text', label:'Nilai TKA'},
           {id:'prestasi', icon:'trophy', label:'Seting Prestasi'},
           {id:'rekapnilai', icon:'table', label:'Rekap Nilai'},
-          {id:'peringkatlokal', icon:'award', label:'Peringkat'}
+          {id:'peringkatlokal', icon:'award', label:'Peringkat Lokal'},
+          {id:'peringkatglobal', icon:'globe', label:'Peringkat Global'}
         ]
       };
       const items = menu[user.role];
@@ -388,8 +343,14 @@
       if(activeNav) activeNav.classList.add('active');
       document.getElementById('page-title').innerText = view.toUpperCase();
       
+      // Auto close sidebar on mobile
+      if (window.innerWidth <= 768) {
+        document.querySelector('.sidebar').classList.remove('show');
+        document.getElementById('sidebar-overlay').classList.remove('show');
+      }
+
       if (view === 'dashboard') renderDashboard();
-      else if (['rekapnilai', 'peringkatlokal'].includes(view)) renderReportTable(view);
+      else if (['rekapnilai', 'peringkatlokal', 'peringkatglobal'].includes(view)) renderReportTable(view);
       else renderCRUDTable(view);
     }
 
@@ -492,14 +453,21 @@
 
         document.getElementById('view-container').innerHTML = `
           <div class="card p-3">
-            <div class="d-flex justify-content-between mb-3 no-print">
-              <h5 class="fw-bold">${view.toUpperCase()}</h5>
-              <div class="d-flex gap-2">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3 no-print">
+              <h5 class="fw-bold mb-3 mb-md-0">${view.toUpperCase()}</h5>
+              <div class="d-flex gap-2 flex-wrap">
                   <button class="btn btn-outline-dark btn-sm" onclick="exportToExcel('${view}')"><i class="bi bi-file-earmark-spreadsheet"></i> EXPORT EXCEL</button>
-                  ${view === 'peringkatlokal' ? `
-                    <button class="btn btn-primary btn-sm fw-bold" onclick='prepareAndPrint(${JSON.stringify(res).replace(/'/g, "&apos;")})'>
-                      <i class="bi bi-printer"></i> CETAK HASIL
-                    </button>
+                  ${(view === 'peringkatlokal' || view === 'peringkatglobal') ? `
+                    <div class="dropdown d-inline-block">
+                      <button class="btn btn-primary btn-sm fw-bold dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-printer"></i> CETAK
+                      </button>
+                      <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick='prepareAndPrint(${JSON.stringify(res).replace(/'/g, "&apos;")}, 1)'>Opsi 1: Tampilkan SG Saja</a></li>
+                        <li><a class="dropdown-item" href="#" onclick='prepareAndPrint(${JSON.stringify(res).replace(/'/g, "&apos;")}, 2)'>Opsi 2: Tampilkan SR, STKA, SK, SG</a></li>
+                        <li><a class="dropdown-item" href="#" onclick='prepareAndPrint(${JSON.stringify(res).replace(/'/g, "&apos;")}, 3)'>Opsi 3: Tanpa Nilai</a></li>
+                      </ul>
+                    </div>
                     <button class="btn btn-warning btn-sm fw-bold" onclick="runRanking()">GENERATE RANKING</button>
                   ` : ''}
               </div>
@@ -514,98 +482,161 @@
       }).getData(targetSheet);
     }
     
-    function prepareAndPrint(res) {
-      const headers = res.headers;
-      const rows = res.rows;
-      const idxKelompok = headers.indexOf('Kelompok');
-      const idxPeringkat = headers.indexOf('Peringkat');
-      
-      const groupedData = {};
-      rows.forEach(row => {
-        const key = row[idxKelompok] || "Lainnya";
-        if (!groupedData[key]) groupedData[key] = [];
-        groupedData[key].push(row);
-      });
-
-      for (let key in groupedData) {
-        groupedData[key].sort((a, b) => (parseInt(a[idxPeringkat]) || 999) - (parseInt(b[idxPeringkat]) || 999));
-      }
-
-      let printHtml = "";
-      const visibleIndices = headers.map((h, i) => (h !== 'Kesediaan' && h !== 'Peringkat') ? i : -1).filter(i => i !== -1);
-      
-      const kelompokKeys = Object.keys(groupedData);
-      kelompokKeys.forEach((kelompok, index) => {
-        printHtml += `
-          <div class="print-page-wrapper">
-            <table class="kop-table">
-              <tr>
-                <td class="kop-logo">
-                   <img src="https://lh3.googleusercontent.com/u/0/d/1EECQjQ8tmGLlWMzv0jFmKoEVb1nF5Dkt=w500-h500" 
-                     alt="Logo" style="width: 85px; height: 85px; object-fit: contain;">
-                </td>
-                <td class="kop-text">
-                  <h4>PEMERINTAH PROVINSI JAWA TIMUR</h4>
-                  <h4>DINAS PENDIDIKAN</h4>
-                  <h3>SMA NEGERI 9 SURABAYA</h3>
-                  <p>Jalan Wijayakusuma Nomor 48, Ketabang, Genteng, Surabaya, Jawa Timur 60272</p>
-                  <p>Telepon (031) 5342608-Faksimili (031)5477817</p>
-                  <p>Laman https://sman9sby.sch.id Pos-El smanixsurabaya@gmail.com</p>
-                </td>
-                <td style="width: 90px;"></td>
-              </tr>
-            </table>
-            
-            <h4 style="text-align: center; margin-top: 15px; font-weight: bold; text-decoration: underline; margin-bottom: 5px;">LAPORAN HASIL SELEKSI E-ELIGIBLE</h4>
-            <h5 style="text-align: center; font-weight: bold; margin-bottom: 20px;">KELOMPOK: ${kelompok.toUpperCase()}</h5>
-            
-            <p style="font-size: 10pt; margin-bottom: 10px;">Daftar siswa yang dinyatakan Eligible berdasarkan pemeringkatan:</p>
-
-            <table class="data-table">
-              <thead>
-                <tr>${visibleIndices.map(i => `<th>${headers[i]}</th>`).join('')}</tr>
-              </thead>
-              <tbody>
-                ${groupedData[kelompok].map(row => `
-                  <tr>
-                    ${visibleIndices.map(i => {
-                      let align = (headers[i] === 'Nama Siswa' || headers[i] === 'Hasil') ? 'left' : 'center';
-                      let val = row[i];
-                      if (headers[i] === 'SG' && !isNaN(val) && val !== "") val = parseFloat(val).toFixed(2);
-                      return `<td style="text-align:${align}">${val || ''}</td>`;
-                    }).join('')}
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-
-            <div class="ttd-wrapper">
-              <div class="ttd-box">
-                <p>Surabaya, ${new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'})}</p>
-                <p>Kepala SMA Negeri 9 Surabaya,</p>
-                <div class="ttd-space"></div>
-                <p><strong>TRI KURNIAWATI, M.Pd.</strong></p>
-                <p>NIP. 197203251997032003</p>
-              </div>
-              <div style="clear: both;"></div>
-            </div>
-            
-            ${index < kelompokKeys.length - 1 ? '<div class="page-break"></div>' : ''}
-          </div>
-        `;
-      });
-
-      const printContainer = document.getElementById('print-area');
-      printContainer.innerHTML = printHtml;
-      
+    function prepareAndPrint(res, option) {
       showLoading(true);
-      setTimeout(() => {
+      
+      // Ambil data Rekap Nilai untuk ditarik nilainya (SR, SP, STKA, SG, SK)
+      google.script.run.withSuccessHandler(rekapRes => {
+        const rekapHeaders = rekapRes.headers;
+        const rekapRows = rekapRes.rows;
+        
+        const headers = res.headers;
+        const rows = res.rows;
+        
+        const isGlobal = currentView === 'peringkatglobal';
+        const idxKelompok = headers.indexOf('Kelompok');
+        const idxPeringkat = headers.indexOf(isGlobal ? 'Peringkat Global' : 'Peringkat');
+        const idxNis = headers.indexOf('NIS');
+        
+        // Buat map nilai dari rekap
+        const nilaiMap = {};
+        rekapRows.forEach(r => {
+           let nis = r[rekapHeaders.indexOf('NIS')];
+           nilaiMap[nis] = {
+             SR: r[rekapHeaders.indexOf('SR')],
+             SP: r[rekapHeaders.indexOf('SP')],
+             STKA: r[rekapHeaders.indexOf('STKA')],
+             SG: r[rekapHeaders.indexOf('SG')],
+             SK: r[rekapHeaders.indexOf('SK')]
+           };
+        });
+
+        const groupedData = {};
+        
+        if (isGlobal) {
+            // Jika global, tidak perlu dikelompokkan per kelompok IPA/IPS, jadikan 1 tabel
+            groupedData['GLOBAL'] = rows;
+        } else {
+            rows.forEach(row => {
+              const key = row[idxKelompok] || "Lainnya";
+              if (!groupedData[key]) groupedData[key] = [];
+              groupedData[key].push(row);
+            });
+        }
+
+        for (let key in groupedData) {
+          groupedData[key].sort((a, b) => (parseInt(a[idxPeringkat]) || 999) - (parseInt(b[idxPeringkat]) || 999));
+        }
+
+        let printHtml = "";
+        
+        // Tentukan Kolom yang akan dicetak
+        // Kolom standar dari tabel peringkat (tanpa kesediaan)
+        let visibleHeaders = [];
+        headers.forEach((h, i) => {
+           if (h !== 'Kesediaan' && (!isGlobal || h !== 'Peringkat Lokal')) {
+               visibleHeaders.push({name: h, index: i, type: 'standard'});
+           }
+        });
+
+        // Sisipkan kolom nilai tergantung Opsi
+        if (option === 1) {
+            // Sisipkan SG sebelum kolom Hasil
+            visibleHeaders.splice(visibleHeaders.length - 1, 0, {name: 'SG', type: 'nilai'});
+        } else if (option === 2) {
+            // Sisipkan SR, STKA, SK, SG sebelum kolom Hasil
+            visibleHeaders.splice(visibleHeaders.length - 1, 0, 
+               {name: 'SR', type: 'nilai'},
+               {name: 'STKA', type: 'nilai'},
+               {name: 'SK', type: 'nilai'},
+               {name: 'SG', type: 'nilai'}
+            );
+        }
+        
+        const kelompokKeys = Object.keys(groupedData);
+        kelompokKeys.forEach((kelompok, index) => {
+          printHtml += `
+            <div class="print-page-wrapper">
+              <table class="kop-table">
+                <tr>
+                  <td class="kop-logo">
+                     <img src="https://drive.google.com/uc?export=view&id=15eEThVZOgDMM0G3GRKXMQjBOtUyn7KRh" 
+                       alt="Logo" style="width: 85px; height: 85px; object-fit: contain;">
+                  </td>
+                  <td class="kop-text">
+                    <h4>PEMERINTAH PROVINSI JAWA TIMUR</h4>
+                    <h4>DINAS PENDIDIKAN</h4>
+                    <h3>SMA NEGERI 9 SURABAYA</h3>
+                    <p>Jalan Wijayakusuma Nomor 48, Ketabang, Genteng, Surabaya, Jawa Timur 60272</p>
+                    <p>Telepon (031) 5342608-Faksimili (031)5477817</p>
+                    <p>Laman https://sman9sby.sch.id Pos-El smanixsurabaya@gmail.com</p>
+                  </td>
+                  <td style="width: 90px;"></td>
+                </tr>
+              </table>
+              
+              <h4 style="text-align: center; margin-top: 15px; font-weight: bold; text-decoration: underline; margin-bottom: 5px;">LAPORAN HASIL SELEKSI E-ELIGIBLE</h4>
+              <h5 style="text-align: center; font-weight: bold; margin-bottom: 20px;">${isGlobal ? 'PERINGKAT GLOBAL' : 'KELOMPOK: ' + kelompok.toUpperCase()}</h5>
+              
+              <p style="font-size: 10pt; margin-bottom: 10px;">Daftar siswa yang dinyatakan Eligible berdasarkan pemeringkatan:</p>
+
+              <table class="data-table">
+                <thead>
+                  <tr>${visibleHeaders.map(col => `<th>${col.name}</th>`).join('')}</tr>
+                </thead>
+                <tbody>
+                  ${groupedData[kelompok].map(row => {
+                    const nis = row[idxNis];
+                    const nMap = nilaiMap[nis] || {};
+                    return `<tr>
+                      ${visibleHeaders.map(col => {
+                        let val = "";
+                        let align = "center";
+                        if (col.type === 'standard') {
+                            val = row[col.index];
+                            if (col.name === 'Nama Siswa' || col.name === 'Hasil') align = "left";
+                        } else if (col.type === 'nilai') {
+                            val = nMap[col.name] !== undefined ? nMap[col.name] : "";
+                        }
+                        if (col.name === 'SG' && !isNaN(val) && val !== "") val = parseFloat(val).toFixed(2);
+                        return \`<td style="text-align:${align}">\${val}</td>\`;
+                      }).join('')}
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+
+              <div class="ttd-wrapper">
+                <div class="ttd-box">
+                  <p>Surabaya, ${new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'})}</p>
+                  <p>Kepala SMA Negeri 9 Surabaya,</p>
+                  <div class="ttd-space"></div>
+                  <p><strong>TRI KURNIAWATI, M.Pd.</strong></p>
+                  <p>NIP. 197203251997032003</p>
+                </div>
+                <div style="clear: both;"></div>
+              </div>
+              
+              ${index < kelompokKeys.length - 1 ? '<div class="page-break"></div>' : ''}
+            </div>
+          `;
+        });
+
+        const printContainer = document.getElementById('print-area');
+        printContainer.innerHTML = printHtml;
+        
         showLoading(false);
-        window.print();
-        setTimeout(() => { printContainer.innerHTML = ""; }, 2000);
-      }, 800);
+        setTimeout(() => {
+          window.print();
+          setTimeout(() => { printContainer.innerHTML = ""; }, 2000);
+        }, 800);
+        
+      }).withFailureHandler(err => {
+        showLoading(false);
+        notify(false, "Gagal Mencetak", "Terjadi kesalahan saat mengambil data rekap nilai.");
+      }).getData('rekapnilai');
     }
-    
+
     function exportToExcel(name) {
         const table = document.getElementById('report-table');
         const wb = XLSX.utils.table_to_book(table);
@@ -761,9 +792,9 @@
 
         document.getElementById('view-container').innerHTML = `
           <div class="card p-3">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <h5 class="fw-bold mb-0">Input Data ${view.toUpperCase()}</h5>
-              <div class="d-flex gap-2">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3">
+              <h5 class="fw-bold mb-2 mb-md-0">Input Data ${view.toUpperCase()}</h5>
+              <div class="d-flex gap-2 flex-wrap">
                 ${(!isNilai && !isTka && !isPrestasi) ? `<button class="btn btn-primary btn-sm" onclick="addRow()"><i class="bi bi-plus-lg"></i> TAMBAH</button>` : `<span class="badge bg-secondary">Data Siswa Otomatis</span>`}
                 <button class="btn btn-outline-dark btn-sm" onclick="downloadTemplate('${view}')">
                   <i class="bi bi-download"></i> UNDUH TEMPLATE
@@ -777,8 +808,8 @@
                 <tbody>${rowsHtml}</tbody>
               </table>
             </div>
-            <div class="mt-3 d-flex justify-content-between align-items-center">
-              <small class="text-muted"><sup>*</sup> Kolom berwarna abu-abu tidak dapat diisi / otomatis dari sistem.</small>
+            <div class="mt-3 d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+              <small class="text-muted mb-2 mb-md-0"><sup>*</sup> Kolom berwarna abu-abu tidak dapat diisi / otomatis dari sistem.</small>
               <button class="btn btn-success fw-bold px-4" onclick="handleSaveData('${view}')">
                 <i class="bi bi-cloud-arrow-up me-2"></i> SIMPAN PERUBAHAN
               </button>
