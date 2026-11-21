@@ -121,6 +121,11 @@
       <div class="text-center text-muted mt-3" style="font-size: 0.78rem;">
         <i class="bi bi-info-circle me-1"></i>Murid: login menggunakan <strong>NIS</strong> sebagai Username &amp; Password.
       </div>
+      <div class="text-center mt-2">
+        <button type="button" class="btn btn-link btn-sm text-decoration-none p-0" onclick="openForgotPasswordModal()">
+          <i class="bi bi-key me-1"></i>Lupa password? Minta reset ke Admin
+        </button>
+      </div>
       <div class="mt-auto pt-4 border-top opacity-50 small">
           Si-MEli Ver.1.0 by Dion
       </div>
@@ -189,6 +194,53 @@
     </div>
   </div>
 
+  <!-- Modal Lupa Password (Murid & Operator) -->
+  <div class="modal fade" id="forgotPasswordModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="fw-bold mb-0"><i class="bi bi-key-fill text-warning me-2"></i>Minta Reset Password</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <p class="text-muted small mb-3">
+          Khusus untuk <strong>Murid</strong> dan <strong>Operator</strong> yang lupa password lama. Masukkan Username atau NIS Anda untuk mengajukan permintaan reset password ke Admin.
+        </p>
+        <div class="mb-3">
+          <label for="forgot-username" class="form-label small fw-bold">Username / NIS</label>
+          <input type="text" id="forgot-username" class="form-control" placeholder="Masukkan Username Operator atau NIS Murid">
+        </div>
+        <div class="alert alert-light border small text-muted py-2 mb-3">
+          Setelah direset oleh Admin, password akan kembali ke default: <strong>NIS</strong> (Murid) atau <strong>912345*#</strong> (Operator).
+        </div>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="button" class="btn btn-primary btn-sm fw-bold" onclick="submitForgotPasswordRequest()">
+            <i class="bi bi-send me-1"></i> Kirim Permintaan
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Konfirmasi Reset Password (Admin) -->
+  <div class="modal fade" id="confirmResetModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="fw-bold mb-0"><i class="bi bi-arrow-counterclockwise text-danger me-2"></i>Konfirmasi Reset Password</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <p id="confirm-reset-text" class="text-muted small mb-3"></p>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="button" class="btn btn-danger btn-sm fw-bold" onclick="confirmResetPassword()">
+            <i class="bi bi-check-lg me-1"></i> Ya, Reset Password
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   <script>
@@ -253,7 +305,10 @@
     let user = null;
     let currentView = '';
     let studentPortalCache = null;
+    let pendingResetTarget = { username: '', role: '' };
     const modal = new bootstrap.Modal(document.getElementById('statusModal'));
+    const forgotPasswordModal = new bootstrap.Modal(document.getElementById('forgotPasswordModal'));
+    const confirmResetModal = new bootstrap.Modal(document.getElementById('confirmResetModal'));
 
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -341,13 +396,15 @@
           {id:'prestasi', icon:'trophy', label:'Seting Prestasi'},
           {id:'rekapnilai', icon:'table', label:'Rekap Nilai'},
           {id:'peringkatlokal', icon:'award', label:'Peringkat Lokal'},
-          {id:'peringkatglobal', icon:'globe', label:'Peringkat Global'}
+          {id:'peringkatglobal', icon:'globe', label:'Peringkat Global'},
+          {id:'gantipassword', icon:'key', label:'Ganti Password'}
         ],
         murid: [
           {id:'murid_beranda', icon:'person-badge', label:'Profil & Ringkasan'},
           {id:'murid_rapor', icon:'journal-text', label:'Rekap Nilai Rapor'},
           {id:'murid_tka_prestasi', icon:'trophy', label:'Nilai TKA & Prestasi'},
-          {id:'murid_eligibel', icon:'patch-check', label:'Hasil Eligibel'}
+          {id:'murid_eligibel', icon:'patch-check', label:'Hasil Eligibel'},
+          {id:'gantipassword', icon:'key', label:'Ganti Password'}
         ]
       };
       const items = menu[user.role] || [];
@@ -369,7 +426,8 @@
         murid_rapor: 'REKAP NILAI RAPOR',
         murid_tka_prestasi: 'NILAI TKA & PRESTASI',
         murid_eligibel: 'HASIL SELEKSI ELIGIBEL',
-        aksesmurid: 'PENGATURAN AKSES MURID'
+        aksesmurid: 'PENGATURAN AKSES MURID',
+        gantipassword: 'GANTI PASSWORD'
       };
       document.getElementById('page-title').innerText = studentTitles[view] || view.toUpperCase();
       
@@ -381,6 +439,11 @@
 
       if (view === 'aksesmurid') {
         renderStudentAccessPage();
+        return;
+      }
+
+      if (view === 'gantipassword') {
+        renderChangePasswordPage();
         return;
       }
 
@@ -766,6 +829,245 @@
           notify(false, "Gagal Memuat Data", "Terjadi kesalahan saat mengambil data murid dari server.");
         })
         .getStudentPortalData(user.nis);
+    }
+
+    // =========================================================================
+    // FITUR GANTI PASSWORD (MURID & OPERATOR) & LUPA PASSWORD / RESET (ADMIN)
+    // =========================================================================
+
+    function openForgotPasswordModal(prefillUsername = '') {
+      const inputEl = document.getElementById('forgot-username');
+      if (inputEl) {
+        inputEl.value = prefillUsername || (document.getElementById('username')?.value || '').trim();
+      }
+      forgotPasswordModal.show();
+    }
+
+    function submitForgotPasswordRequest() {
+      const uname = (document.getElementById('forgot-username')?.value || '').trim();
+      if (!uname) {
+        return notify(false, "Data Belum Lengkap", "Silakan masukkan Username atau NIS Anda terlebih dahulu.");
+      }
+
+      forgotPasswordModal.hide();
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (res && res.success) {
+            notify(true, "Permintaan Terkirim", res.message || "Permintaan reset password berhasil dikirim ke Admin.");
+          } else {
+            notify(false, "Permintaan Gagal", res?.message || "Gagal mengajukan permintaan reset password.");
+          }
+        })
+        .withFailureHandler(err => {
+          showLoading(false);
+          notify(false, "Koneksi Gagal", "Tidak dapat terhubung ke server saat mengirim permintaan reset password.");
+        })
+        .requestPasswordReset(uname);
+    }
+
+    function togglePasswordField(inputId, btnEl) {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      const isHidden = input.type === 'password';
+      input.type = isHidden ? 'text' : 'password';
+      if (btnEl) {
+        btnEl.innerHTML = isHidden ? '<i class="bi bi-eye-slash"></i>' : '<i class="bi bi-eye"></i>';
+      }
+    }
+
+    function renderChangePasswordPage() {
+      if (!user || !['murid', 'operator'].includes(user.role)) {
+        notify(false, "Akses Ditolak", "Halaman ganti password ini ditujukan untuk Murid dan Operator.");
+        return navigate('dashboard');
+      }
+
+      const accountId = user.role === 'murid' ? user.nis : user.username;
+      const defaultHint = user.role === 'murid' ? 'NIS Anda' : '912345*#';
+
+      document.getElementById('view-container').innerHTML = `
+        <div class="row justify-content-center">
+          <div class="col-lg-6">
+            <div class="card p-4">
+              <h5 class="fw-bold mb-1"><i class="bi bi-key-fill text-primary me-2"></i>Ubah Password Akun</h5>
+              <p class="text-muted small mb-4">
+                Akun: <strong>${escapeHtml(accountId)}</strong> (${escapeHtml(user.role.toUpperCase())}).
+                Masukkan password lama Anda untuk membuat password baru.
+              </p>
+
+              <div class="mb-3">
+                <label for="cp-old-password" class="form-label small fw-bold">Password Lama</label>
+                <div class="input-group">
+                  <input type="password" id="cp-old-password" class="form-control" placeholder="Masukkan password lama">
+                  <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordField('cp-old-password', this)">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label for="cp-new-password" class="form-label small fw-bold">Password Baru</label>
+                <div class="input-group">
+                  <input type="password" id="cp-new-password" class="form-control" placeholder="Minimal 4 karakter">
+                  <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordField('cp-new-password', this)">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div class="mb-4">
+                <label for="cp-confirm-password" class="form-label small fw-bold">Konfirmasi Password Baru</label>
+                <div class="input-group">
+                  <input type="password" id="cp-confirm-password" class="form-control" placeholder="Ulangi password baru">
+                  <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordField('cp-confirm-password', this)">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                </div>
+              </div>
+
+              <button type="button" class="btn btn-primary w-100 fw-bold py-2" onclick="handleChangePassword()">
+                <i class="bi bi-check2-circle me-2"></i>SIMPAN PASSWORD BARU
+              </button>
+
+              <div class="alert alert-light border mt-4 mb-0 small">
+                <div class="fw-bold text-dark mb-1"><i class="bi bi-question-circle me-1 text-warning"></i>Lupa Password Lama?</div>
+                <div class="text-muted mb-2">
+                  Jika Anda lupa password lama, ajukan permintaan reset ke Admin. Password akan dikembalikan ke default (<strong>${escapeHtml(defaultHint)}</strong>).
+                </div>
+                <button type="button" class="btn btn-outline-warning text-dark btn-sm fw-semibold" onclick="openForgotPasswordModal('${escapeHtml(accountId)}')">
+                  <i class="bi bi-send me-1"></i> Ajukan Reset Password ke Admin
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function handleChangePassword() {
+      const oldPw = (document.getElementById('cp-old-password')?.value || '').trim();
+      const newPw = (document.getElementById('cp-new-password')?.value || '').trim();
+      const confirmPw = (document.getElementById('cp-confirm-password')?.value || '').trim();
+
+      if (!oldPw || !newPw || !confirmPw) {
+        return notify(false, "Data Belum Lengkap", "Lengkapi password lama, password baru, dan konfirmasi password baru.");
+      }
+      if (newPw.length < 4) {
+        return notify(false, "Password Terlalu Pendek", "Password baru minimal terdiri dari 4 karakter.");
+      }
+      if (newPw !== confirmPw) {
+        return notify(false, "Konfirmasi Tidak Cocok", "Password baru dan konfirmasi password baru tidak sama.");
+      }
+
+      const accountId = user.role === 'murid' ? user.nis : user.username;
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (res && res.success) {
+            document.getElementById('cp-old-password').value = '';
+            document.getElementById('cp-new-password').value = '';
+            document.getElementById('cp-confirm-password').value = '';
+            notify(true, "Password Diperbarui", res.message || "Password Anda berhasil diganti.");
+          } else {
+            notify(false, "Gagal Ganti Password", res?.message || "Password lama salah atau terjadi kesalahan.");
+          }
+        })
+        .withFailureHandler(err => {
+          showLoading(false);
+          notify(false, "Koneksi Gagal", "Tidak dapat terhubung ke server untuk mengganti password.");
+        })
+        .changePassword(accountId, user.role, oldPw, newPw);
+    }
+
+    function openResetPasswordModal(username, role) {
+      const safeUser = String(username || '').trim();
+      const safeRole = String(role || '').trim().toLowerCase();
+      if (!safeUser) {
+        return notify(false, "Username Kosong", "Username/NIS yang akan direset tidak boleh kosong.");
+      }
+
+      pendingResetTarget = { username: safeUser, role: safeRole };
+      let defaultDesc = 'password default';
+      if (safeRole === 'murid') defaultDesc = `<strong>NIS (${escapeHtml(safeUser)})</strong>`;
+      else if (safeRole === 'operator') defaultDesc = '<strong>912345*#</strong>';
+      else if (safeRole === 'admin') defaultDesc = '<strong>admin123</strong>';
+
+      document.getElementById('confirm-reset-text').innerHTML =
+        `Apakah Anda yakin ingin mereset password akun <strong>${escapeHtml(safeUser)}</strong>` +
+        (safeRole ? ` (${escapeHtml(safeRole.toUpperCase())})` : '') +
+        `?<br><br>Password akun ini akan dikembalikan ke ${defaultDesc}.`;
+      confirmResetModal.show();
+    }
+
+    function openResetPasswordModalFromRow(btn) {
+      const tr = btn.closest('tr');
+      if (!tr) return;
+      const uname = tr.cells[0] ? tr.cells[0].innerText.trim() : '';
+      const role = tr.cells[1] ? tr.cells[1].innerText.trim().toLowerCase() : '';
+      if (!uname) {
+        return notify(false, "Baris Kosong", "Isi Username terlebih dahulu lalu simpan sebelum mereset password.");
+      }
+      openResetPasswordModal(uname, role);
+    }
+
+    function openResetPasswordModalFromBtn(btn) {
+      openResetPasswordModal(btn.dataset.username || '', btn.dataset.role || '');
+    }
+
+    function handleQuickResetPassword() {
+      const uname = (document.getElementById('quick-reset-username')?.value || '').trim();
+      const role = (document.getElementById('quick-reset-role')?.value || '').trim().toLowerCase();
+      if (!uname) {
+        return notify(false, "Input Kosong", "Masukkan Username Operator atau NIS Murid yang ingin direset.");
+      }
+      openResetPasswordModal(uname, role);
+    }
+
+    function confirmResetPassword() {
+      confirmResetModal.hide();
+      const { username, role } = pendingResetTarget;
+      if (!username) return;
+
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (res && res.success) {
+            notify(true, "Reset Password Berhasil", res.message || ("Password " + username + " berhasil direset."));
+            if (currentView === 'users') navigate('users');
+          } else {
+            notify(false, "Reset Password Gagal", res?.message || "Gagal mereset password pengguna.");
+          }
+        })
+        .withFailureHandler(err => {
+          showLoading(false);
+          notify(false, "Koneksi Gagal", "Tidak dapat terhubung ke server untuk mereset password.");
+        })
+        .resetUserPassword(username, role);
+    }
+
+    function handleDismissResetRequest(btn) {
+      const uname = btn.dataset.username || '';
+      if (!uname) return;
+
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (res && res.success) {
+            notify(true, "Permintaan Dihapus", res.message || "Permintaan reset password telah dihapus.");
+            if (currentView === 'users') navigate('users');
+          } else {
+            notify(false, "Gagal", res?.message || "Tidak dapat menghapus permintaan reset password.");
+          }
+        })
+        .withFailureHandler(err => {
+          showLoading(false);
+          notify(false, "Koneksi Gagal", "Terjadi kesalahan saat menghapus permintaan reset.");
+        })
+        .dismissResetRequest(uname);
     }
 
     function renderStudentAccessPage() {
@@ -1370,21 +1672,27 @@
       const table = document.getElementById('crud-table');
       if (!table) return;
       const tbody = table.querySelector('tbody');
-      const columnCount = table.querySelector('thead tr').cells.length;
+      const headerCells = Array.from(table.querySelectorAll('thead th'));
       const newRow = document.createElement('tr');
       
-      for (let i = 0; i < columnCount; i++) {
+      headerCells.forEach(th => {
         const cell = document.createElement('td');
-        cell.contentEditable = "true";
-        cell.innerText = "";
+        if (th.classList.contains('action-col')) {
+          cell.className = "text-center action-cell";
+          cell.innerHTML = `<button type="button" class="btn btn-outline-warning text-dark btn-sm py-0 px-2" onclick="openResetPasswordModalFromRow(this)"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset</button>`;
+        } else {
+          cell.contentEditable = "true";
+          cell.className = "cell-editable";
+          cell.innerText = "";
+        }
         newRow.appendChild(cell);
-      }
+      });
       
       const emptyRow = tbody.querySelector('.text-muted.italic');
       if (emptyRow) tbody.innerHTML = "";
       
       tbody.appendChild(newRow);
-      newRow.cells[0].focus();
+      if (newRow.cells[0]) newRow.cells[0].focus();
     }
 
     function handleSaveData(view) {
@@ -1395,12 +1703,16 @@
       const rows = Array.from(table.querySelectorAll('tbody tr'));
       const data = rows
         .map(row => {
-          const cellsData = Array.from(row.cells).map(cell => cell.innerText.trim());
+          const cellsData = Array.from(row.cells)
+            .filter(cell => !cell.classList.contains('action-cell'))
+            .map(cell => cell.innerText.trim());
           // Fallback pengaman jika backend masih mengirim kolom Password
           if (view === 'users' && hiddenPwIdx !== -1 && cellsData[0] !== "") {
+            const roleVal = (cellsData[1] || '').toLowerCase();
+            const fallbackDefaultPw = roleVal === 'operator' ? '912345*#' : (roleVal === 'admin' ? 'admin123' : cellsData[0]);
             const preservedPw = row.hasAttribute('data-hidden-pw')
               ? row.getAttribute('data-hidden-pw')
-              : cellsData[0];
+              : fallbackDefaultPw;
             cellsData.splice(hiddenPwIdx, 0, preservedPw);
           }
           return cellsData;
@@ -1453,8 +1765,12 @@
         const isNilai = view.startsWith('nilai');
         const isTka = (view === 'tka');
         const isPrestasi = (view === 'prestasi');
+        const resetRequests = Array.isArray(res.resetRequests) ? res.resetRequests : [];
 
         let headersHtml = headers.map(h => `<th class="text-center">${h}</th>`).join('');
+        if (isUsers) {
+          headersHtml += `<th class="text-center action-col">Aksi</th>`;
+        }
         
         let rowsHtml = rows.map((row, rowIndex) => {
           const nis = row[0];
@@ -1511,6 +1827,15 @@
               >${cellHtmlContent}</td>`;
           }).join('');
 
+          if (isUsers) {
+            cellsHtml += `
+              <td class="text-center action-cell">
+                <button type="button" class="btn btn-outline-warning text-dark btn-sm py-0 px-2 fw-semibold" onclick="openResetPasswordModalFromRow(this)">
+                  <i class="bi bi-arrow-counterclockwise me-1"></i>Reset Password
+                </button>
+              </td>`;
+          }
+
           const hiddenPwAttr = hiddenPasswordIdx !== -1
             ? ` data-hidden-pw="${escapeHtml(rawRows[rowIndex][hiddenPasswordIdx] ?? '')}"`
             : '';
@@ -1519,10 +1844,98 @@
         }).join('');
 
         if (rows.length === 0) {
-          rowsHtml = `<tr><td colspan="${headers.length}" class="text-center p-4 text-muted italic">Tidak ada data. Tambahkan data di menu Siswa terlebih dahulu.</td></tr>`;
+          const totalCols = headers.length + (isUsers ? 1 : 0);
+          rowsHtml = `<tr><td colspan="${totalCols}" class="text-center p-4 text-muted italic">Tidak ada data. Tambahkan data terlebih dahulu.</td></tr>`;
+        }
+
+        let usersResetPanelHtml = '';
+        if (isUsers) {
+          const reqRowsHtml = resetRequests.map(req => `
+            <tr>
+              <td class="text-center">${escapeHtml(req.waktu)}</td>
+              <td class="text-center fw-bold">${escapeHtml(req.username)}</td>
+              <td>${escapeHtml(req.nama || req.username)}</td>
+              <td class="text-center"><span class="badge ${req.role === 'operator' ? 'bg-info text-dark' : 'bg-primary'}">${escapeHtml(req.role.toUpperCase())}</span></td>
+              <td class="text-center">
+                <div class="d-flex justify-content-center gap-1 flex-wrap">
+                  <button type="button" class="btn btn-danger btn-sm py-0 px-2"
+                    data-username="${escapeHtml(req.username)}"
+                    data-role="${escapeHtml(req.role)}"
+                    onclick="openResetPasswordModalFromBtn(this)">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Reset Default
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2"
+                    data-username="${escapeHtml(req.username)}"
+                    onclick="handleDismissResetRequest(this)">
+                    <i class="bi bi-x-lg"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `).join('');
+
+          usersResetPanelHtml = `
+            <div class="card p-3 mb-3 border-start border-4 border-warning">
+              <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3 gap-2">
+                <div>
+                  <h6 class="fw-bold mb-0">
+                    <i class="bi bi-key-fill text-warning me-2"></i>Menu Reset Password
+                    ${resetRequests.length > 0 ? `<span class="badge bg-danger ms-2">${resetRequests.length} Permintaan</span>` : ''}
+                  </h6>
+                  <small class="text-muted">Password default: <strong>NIS</strong> (Murid) &nbsp;|&nbsp; <strong>912345*#</strong> (Operator)</small>
+                </div>
+              </div>
+
+              <div class="row g-2 align-items-end mb-3">
+                <div class="col-md-5">
+                  <label for="quick-reset-username" class="form-label small fw-semibold mb-1">Reset Cepat (Username Operator / NIS Murid)</label>
+                  <input type="text" id="quick-reset-username" class="form-control form-control-sm" placeholder="Contoh: operator atau NIS murid">
+                </div>
+                <div class="col-md-4">
+                  <label for="quick-reset-role" class="form-label small fw-semibold mb-1">Role Akun</label>
+                  <select id="quick-reset-role" class="form-select form-select-sm">
+                    <option value="murid">Murid (Default: NIS)</option>
+                    <option value="operator">Operator (Default: 912345*#)</option>
+                  </select>
+                </div>
+                <div class="col-md-3">
+                  <button type="button" class="btn btn-warning btn-sm w-100 fw-bold" onclick="handleQuickResetPassword()">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>RESET PASSWORD
+                  </button>
+                </div>
+              </div>
+
+              ${resetRequests.length > 0 ? `
+                <div class="border-top pt-3">
+                  <div class="small fw-bold text-danger mb-2">
+                    <i class="bi bi-bell-fill me-1"></i>Daftar Permintaan Reset Password dari Murid / Operator:
+                  </div>
+                  <div class="table-responsive" style="max-height: 220px;">
+                    <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 0.82rem;">
+                      <thead class="table-light">
+                        <tr>
+                          <th class="text-center">Waktu</th>
+                          <th class="text-center">Username / NIS</th>
+                          <th>Nama</th>
+                          <th class="text-center">Role</th>
+                          <th class="text-center">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody>${reqRowsHtml}</tbody>
+                    </table>
+                  </div>
+                </div>
+              ` : `
+                <div class="small text-muted border-top pt-2">
+                  <i class="bi bi-check-circle text-success me-1"></i>Tidak ada permintaan reset password yang menunggu.
+                </div>
+              `}
+            </div>
+          `;
         }
 
         document.getElementById('view-container').innerHTML = `
+          ${usersResetPanelHtml}
           <div class="card p-3">
             <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3">
               <h5 class="fw-bold mb-2 mb-md-0">Input Data ${view.toUpperCase()}</h5>
@@ -1543,7 +1956,7 @@
             <div class="mt-3 d-flex flex-column flex-md-row justify-content-between align-items-md-center">
               <small class="text-muted mb-2 mb-md-0">
                 ${isUsers
-                  ? '<sup>*</sup> Kolom Password disembunyikan demi keamanan. Password akun lama tetap dipertahankan; akun baru menggunakan Username sebagai password awal.'
+                  ? '<sup>*</sup> Kolom Password disembunyikan demi keamanan. Password default user baru/reset: <strong>NIS</strong> (Murid) &amp; <strong>912345*#</strong> (Operator).'
                   : '<sup>*</sup> Kolom berwarna abu-abu tidak dapat diisi / otomatis dari sistem.'}
               </small>
               <button class="btn btn-success fw-bold px-4" onclick="handleSaveData('${view}')">
@@ -1559,9 +1972,13 @@
       const table = document.getElementById('crud-table');
       if (!table) return;
 
-      const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText);
+      const headers = Array.from(table.querySelectorAll('thead th'))
+        .filter(th => !th.classList.contains('action-col'))
+        .map(th => th.innerText);
       const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr => {
-        return Array.from(tr.cells).map(td => td.innerText.trim());
+        return Array.from(tr.cells)
+          .filter(td => !td.classList.contains('action-cell'))
+          .map(td => td.innerText.trim());
       });
 
       const finalData = [headers, ...rows];
@@ -1607,7 +2024,9 @@
     function processImportedData(newRows) {
       const table = document.getElementById('crud-table');
       const tbody = table.querySelector('tbody');
-      const headerCount = table.querySelectorAll('thead th').length;
+      const headerCells = Array.from(table.querySelectorAll('thead th'));
+      const hasActionCol = headerCells.some(th => th.classList.contains('action-col'));
+      const headerCount = headerCells.filter(th => !th.classList.contains('action-col')).length;
 
       const emptyRow = tbody.querySelector('.empty-row');
       if (emptyRow) emptyRow.remove();
@@ -1632,7 +2051,7 @@
 
         if (existingRow) {
           for (let i = 0; i < headerCount; i++) {
-            if (!existingRow.cells[i].classList.contains('cell-disabled')) {
+            if (!existingRow.cells[i].classList.contains('cell-disabled') && !existingRow.cells[i].classList.contains('action-cell')) {
                 existingRow.cells[i].innerText = rowData[i] !== undefined ? rowData[i] : "";
             }
           }
@@ -1645,6 +2064,12 @@
             td.className = "cell-editable";
             td.innerText = rowData[i] !== undefined ? rowData[i] : "";
             tr.appendChild(td);
+          }
+          if (hasActionCol) {
+            const actionTd = document.createElement('td');
+            actionTd.className = "text-center action-cell";
+            actionTd.innerHTML = `<button type="button" class="btn btn-outline-warning text-dark btn-sm py-0 px-2 fw-semibold" onclick="openResetPasswordModalFromRow(this)"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset Password</button>`;
+            tr.appendChild(actionTd);
           }
           tbody.appendChild(tr);
           addedCount++;
