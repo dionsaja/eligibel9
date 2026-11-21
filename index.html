@@ -137,22 +137,25 @@
     <div class="d-flex">
       <!-- Sidebar -->
       <nav class="sidebar">
-        <div class="d-flex align-items-center mb-4 border-bottom pb-3">
-          <div class="sidebar-logo-container shadow-sm">
+        <div class="d-flex align-items-center p-3 border-bottom border-secondary mb-2">
+          <div class="sidebar-logo-container shadow-sm flex-shrink-0">
             <img src="https://lh3.googleusercontent.com/d/15eEThVZOgDMM0G3GRKXMQjBOtUyn7KRh" 
                  alt="Logo SMAN 9 Surabaya" 
                  style="width: 100%; height: 100%; object-fit: contain;"
-                 onerror="this.onerror=null; this.src='https://via.placeholder.com/50?text=9';">
+                 onerror="this.onerror=null; this.src='https://dummyimage.com/50x50/0d6efd/ffffff&text=9';">
           </div>
-          <h4 class="fw-bold mb-0">Si-MEli</h4>
-          <div class="p-4 border-bottom border-secondary mb-3">
-            <span id="badge-role" class="badge bg-info mt-2">ADMIN</span>
+          <div>
+            <h4 class="fw-bold mb-0">Si-MEli</h4>
+            <span id="badge-role" class="badge bg-info mt-1">ADMIN</span>
           </div>
         </div>
-        <div id="nav-container" class="nav flex-column">
+        <div id="nav-container" class="nav flex-column flex-grow-1 overflow-auto">
           <!-- Menu Items Inject Here -->
         </div>
         <div class="mt-auto p-4 border-top border-secondary">
+          <button id="btn-sidebar-change-password" class="btn btn-outline-warning btn-sm w-100 mb-2" style="display: none;" onclick="navigate('gantipassword')">
+            <i class="bi bi-key me-1"></i> GANTI PASSWORD
+          </button>
           <button class="btn btn-danger btn-sm w-100" onclick="handleLogout()">
             <i class="bi bi-power"></i> LOGOUT
           </button>
@@ -341,14 +344,17 @@
       google.script.run.withSuccessHandler(res => {
         showLoading(false);
         if (res.success) {
-          user = res;
+          user = {
+            ...res,
+            role: String(res.role || '').trim().toLowerCase()
+          };
           studentPortalCache = null;
           document.getElementById('login-page').style.display = 'none';
           document.getElementById('app-content').style.display = 'block';
-          document.getElementById('display-user').innerText = res.username;
-          document.getElementById('badge-role').innerText = res.role.toUpperCase();
+          document.getElementById('display-user').innerText = user.username;
+          document.getElementById('badge-role').innerText = user.role.toUpperCase();
           buildMenu();
-          if (res.role === 'murid') navigate('murid_beranda');
+          if (user.role === 'murid') navigate('murid_beranda');
           else navigate('dashboard');
         } else {
           notify(false, "Login Gagal", res.message || "Username atau password salah.");
@@ -400,19 +406,26 @@
           {id:'gantipassword', icon:'key', label:'Ganti Password'}
         ],
         murid: [
-          {id:'murid_beranda', icon:'person-badge', label:'Profil & Ringkasan'},
+          {id:'murid_beranda', icon:'person-circle', label:'Profil & Ringkasan'},
           {id:'murid_rapor', icon:'journal-text', label:'Rekap Nilai Rapor'},
           {id:'murid_tka_prestasi', icon:'trophy', label:'Nilai TKA & Prestasi'},
           {id:'murid_eligibel', icon:'patch-check', label:'Hasil Eligibel'},
           {id:'gantipassword', icon:'key', label:'Ganti Password'}
         ]
       };
-      const items = menu[user.role] || [];
+      const roleKey = String(user?.role || '').trim().toLowerCase();
+      const items = menu[roleKey] || [];
       document.getElementById('nav-container').innerHTML = items.map(item => `
-        <a href="#" id="nav-${item.id}" class="nav-link" onclick="navigate('${item.id}')">
+        <a href="javascript:void(0)" id="nav-${item.id}" class="nav-link" onclick="navigate('${item.id}')">
           <i class="bi bi-${item.icon} me-3"></i> ${item.label}
         </a>
       `).join('');
+
+      // Tampilkan tombol cepat Ganti Password di footer sidebar khusus Murid & Operator
+      const footerChangePwBtn = document.getElementById('btn-sidebar-change-password');
+      if (footerChangePwBtn) {
+        footerChangePwBtn.style.display = (roleKey === 'murid' || roleKey === 'operator') ? 'block' : 'none';
+      }
     }
 
     function navigate(view) {
