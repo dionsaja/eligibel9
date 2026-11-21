@@ -118,6 +118,9 @@
         </div>
       </div>
       <button class="btn btn-primary w-100 py-2 fw-bold" onclick="handleLogin()">LOGIN</button>
+      <div class="text-center text-muted mt-3" style="font-size: 0.78rem;">
+        <i class="bi bi-info-circle me-1"></i>Murid: login menggunakan <strong>NIS</strong> sebagai Username &amp; Password.
+      </div>
       <div class="mt-auto pt-4 border-top opacity-50 small">
           Si-MEli Ver.1.0 by Dion
       </div>
@@ -249,7 +252,14 @@
 
     let user = null;
     let currentView = '';
+    let studentPortalCache = null;
     const modal = new bootstrap.Modal(document.getElementById('statusModal'));
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[ch]));
+    }
 
     function toggleSidebar() {
       document.querySelector('.sidebar').classList.toggle('show');
@@ -277,12 +287,14 @@
         showLoading(false);
         if (res.success) {
           user = res;
+          studentPortalCache = null;
           document.getElementById('login-page').style.display = 'none';
           document.getElementById('app-content').style.display = 'block';
           document.getElementById('display-user').innerText = res.username;
           document.getElementById('badge-role').innerText = res.role.toUpperCase();
           buildMenu();
-          navigate('dashboard');
+          if (res.role === 'murid') navigate('murid_beranda');
+          else navigate('dashboard');
         } else {
           notify(false, "Login Gagal", res.message || "Username atau password salah.");
         }
@@ -296,6 +308,9 @@
 
     function handleLogout() {
       user = null;
+      studentPortalCache = null;
+      document.getElementById('username').value = '';
+      document.getElementById('password').value = '';
       document.getElementById('login-page').style.display = 'flex';
       document.getElementById('app-content').style.display = 'none';
     }
@@ -312,7 +327,8 @@
           {id:'setingurutan', icon:'sort-down', label:'Seting Urutan'},
           {id:'rekapnilai', icon:'table', label:'Rekap Nilai'},
           {id:'peringkatlokal', icon:'award', label:'Peringkat Lokal'},
-          {id:'peringkatglobal', icon:'globe', label:'Peringkat Global'}
+          {id:'peringkatglobal', icon:'globe', label:'Peringkat Global'},
+          {id:'aksesmurid', icon:'calendar-check', label:'Akses Murid'}
         ],
         operator: [
           {id:'dashboard', icon:'grid-1x2', label:'Dashboard'},
@@ -326,9 +342,15 @@
           {id:'rekapnilai', icon:'table', label:'Rekap Nilai'},
           {id:'peringkatlokal', icon:'award', label:'Peringkat Lokal'},
           {id:'peringkatglobal', icon:'globe', label:'Peringkat Global'}
+        ],
+        murid: [
+          {id:'murid_beranda', icon:'person-badge', label:'Profil & Ringkasan'},
+          {id:'murid_rapor', icon:'journal-text', label:'Rekap Nilai Rapor'},
+          {id:'murid_tka_prestasi', icon:'trophy', label:'Nilai TKA & Prestasi'},
+          {id:'murid_eligibel', icon:'patch-check', label:'Hasil Eligibel'}
         ]
       };
-      const items = menu[user.role];
+      const items = menu[user.role] || [];
       document.getElementById('nav-container').innerHTML = items.map(item => `
         <a href="#" id="nav-${item.id}" class="nav-link" onclick="navigate('${item.id}')">
           <i class="bi bi-${item.icon} me-3"></i> ${item.label}
@@ -341,7 +363,15 @@
       document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
       const activeNav = document.getElementById('nav-' + view);
       if(activeNav) activeNav.classList.add('active');
-      document.getElementById('page-title').innerText = view.toUpperCase();
+
+      const studentTitles = {
+        murid_beranda: 'PROFIL & RINGKASAN MURID',
+        murid_rapor: 'REKAP NILAI RAPOR',
+        murid_tka_prestasi: 'NILAI TKA & PRESTASI',
+        murid_eligibel: 'HASIL SELEKSI ELIGIBEL',
+        aksesmurid: 'PENGATURAN AKSES MURID'
+      };
+      document.getElementById('page-title').innerText = studentTitles[view] || view.toUpperCase();
       
       // Auto close sidebar on mobile
       if (window.innerWidth <= 768) {
@@ -349,9 +379,678 @@
         document.getElementById('sidebar-overlay').classList.remove('show');
       }
 
+      if (view === 'aksesmurid') {
+        renderStudentAccessPage();
+        return;
+      }
+
+      if (view.startsWith('murid_')) {
+        renderStudentView(view, false);
+        return;
+      }
+
       if (view === 'dashboard') renderDashboard();
       else if (['rekapnilai', 'peringkatlokal', 'peringkatglobal'].includes(view)) renderReportTable(view);
       else renderCRUDTable(view);
+    }
+
+    function renderStudentView(view, forceRefresh = false) {
+      if (!user || !user.nis) {
+        return notify(false, "Sesi Tidak Valid", "Silakan login kembali.");
+      }
+
+      const renderWithData = (data) => {
+        if (!data || !data.success) {
+          if (data && data.accessClosed) {
+            document.getElementById('view-container').innerHTML = `
+              <div class="card p-4 text-center border-warning">
+                <i class="bi bi-lock-fill text-warning fs-1 mb-2"></i>
+                <h4 class="fw-bold">Akses Portal Murid Ditutup</h4>
+                <p class="text-muted mb-3">${escapeHtml(data.message || 'Masa akses murid telah ditutup.')}</p>
+                <div>
+                  <button class="btn btn-danger" onclick="handleLogout()">
+                    <i class="bi bi-box-arrow-left me-1"></i> Kembali ke Halaman Login
+                  </button>
+                </div>
+              </div>`;
+            return;
+          }
+          document.getElementById('view-container').innerHTML = `
+            <div class="alert alert-danger">
+              <i class="bi bi-exclamation-triangle me-2"></i>${escapeHtml(data?.message || 'Data murid tidak ditemukan.')}
+            </div>`;
+          return;
+        }
+
+        const b = data.biodata || {};
+        const rekap = data.rekap;
+        const annAccess = data.announcementAccess || { allowed: true, message: '' };
+        const lokal = annAccess.allowed ? data.peringkatLokal : null;
+        const global = annAccess.allowed ? data.peringkatGlobal : null;
+        const bobot = data.bobot || { rapor: 60, prestasi: 20, tka: 20 };
+
+        const isEligible = annAccess.allowed && lokal && String(lokal.hasil || '').toLowerCase() === 'eligibel';
+        const statusText = !annAccess.allowed
+          ? 'Belum Dibuka'
+          : (lokal ? lokal.hasil : 'Belum Diproses');
+        const statusBadgeClass = !annAccess.allowed
+          ? 'bg-warning text-dark'
+          : (lokal ? (isEligible ? 'bg-success' : 'bg-danger') : 'bg-secondary');
+
+        const sgDisplay = rekap && rekap.SG !== '' && !isNaN(rekap.SG) ? parseFloat(rekap.SG).toFixed(2) : '-';
+        const srDisplay = rekap && rekap.SR !== '' && rekap.SR !== undefined ? rekap.SR : '-';
+        const stkaDisplay = rekap && rekap.STKA !== '' && rekap.STKA !== undefined ? rekap.STKA : (data.tka?.skor !== null ? data.tka.skor : '-');
+        const spDisplay = rekap && rekap.SP !== '' && rekap.SP !== undefined ? rekap.SP : (data.prestasi?.skor !== null ? data.prestasi.skor : '-');
+        const skDisplay = rekap && rekap.SK !== '' && rekap.SK !== undefined ? rekap.SK : '-';
+
+        const refreshBar = `
+          <div class="d-flex justify-content-end mb-3">
+            <button class="btn btn-outline-primary btn-sm" onclick="renderStudentView('${view}', true)">
+              <i class="bi bi-arrow-clockwise me-1"></i> Muat Ulang Data
+            </button>
+          </div>`;
+
+        if (view === 'murid_beranda') {
+          document.getElementById('view-container').innerHTML = `
+            ${refreshBar}
+            <div class="card bg-primary text-white p-4 mb-4">
+              <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                <div>
+                  <span class="badge bg-light text-primary mb-2">NIS: ${escapeHtml(b.nis)}</span>
+                  <h3 class="fw-bold mb-1">${escapeHtml(b.nama)}</h3>
+                  <div class="opacity-75">
+                    Kelas: <strong>${escapeHtml(b.kelas || '-')}</strong> &nbsp;|&nbsp;
+                    Kelompok: <strong>${escapeHtml(b.kelompok || '-')}</strong> &nbsp;|&nbsp;
+                    Kesediaan: <strong>${escapeHtml(b.kesediaan || '-')}</strong>
+                  </div>
+                </div>
+                <div class="text-md-end">
+                  <div class="small opacity-75 mb-1">Status Eligibel Anda</div>
+                  <span class="badge ${statusBadgeClass} fs-6 px-3 py-2 border border-white">${escapeHtml(statusText.toUpperCase())}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+              <div class="col-6 col-md-3">
+                <div class="card p-3 h-100 text-center">
+                  <small class="text-muted">Skor Rapor (SR)</small>
+                  <h3 class="fw-bold text-primary mt-1 mb-0">${escapeHtml(srDisplay)}</h3>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="card p-3 h-100 text-center">
+                  <small class="text-muted">Nilai TKA (STKA)</small>
+                  <h3 class="fw-bold text-info mt-1 mb-0">${escapeHtml(stkaDisplay)}</h3>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="card p-3 h-100 text-center">
+                  <small class="text-muted">Nilai Prestasi (SP)</small>
+                  <h3 class="fw-bold text-warning mt-1 mb-0">${escapeHtml(spDisplay)}</h3>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="card p-3 h-100 text-center">
+                  <small class="text-muted">Skor Gabungan (SG)</small>
+                  <h3 class="fw-bold text-success mt-1 mb-0">${escapeHtml(sgDisplay)}</h3>
+                </div>
+              </div>
+            </div>
+
+            <div class="card p-4">
+              <h5 class="fw-bold mb-3"><i class="bi bi-compass me-2 text-primary"></i>Akses Cepat</h5>
+              <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-outline-primary" onclick="navigate('murid_rapor')">
+                  <i class="bi bi-journal-text me-1"></i> Lihat Rekap Nilai Rapor
+                </button>
+                <button class="btn btn-outline-warning text-dark" onclick="navigate('murid_tka_prestasi')">
+                  <i class="bi bi-trophy me-1"></i> Lihat Nilai TKA &amp; Prestasi
+                </button>
+                <button class="btn btn-success" onclick="navigate('murid_eligibel')">
+                  <i class="bi bi-patch-check me-1"></i> Cek Hasil Eligibel
+                </button>
+              </div>
+            </div>`;
+          return;
+        }
+
+        if (view === 'murid_rapor') {
+          const raporRows = Array.isArray(data.rapor) ? data.rapor : [];
+          let tbodyHtml = raporRows.map((m, idx) => {
+            const khususBadge = m.isKhusus ? '<span class="badge bg-info text-dark ms-1">Khusus</span>' : '';
+            return `
+              <tr>
+                <td class="text-center">${idx + 1}</td>
+                <td class="text-center fw-semibold">${escapeHtml(m.kode)}</td>
+                <td>${escapeHtml(m.nama)}${khususBadge}</td>
+                <td class="text-center">${escapeHtml(m.sem1 === '' ? '-' : m.sem1)}</td>
+                <td class="text-center">${escapeHtml(m.sem2 === '' ? '-' : m.sem2)}</td>
+                <td class="text-center">${escapeHtml(m.sem3 === '' ? '-' : m.sem3)}</td>
+                <td class="text-center">${escapeHtml(m.sem4 === '' ? '-' : m.sem4)}</td>
+                <td class="text-center">${escapeHtml(m.sem5 === '' ? '-' : m.sem5)}</td>
+                <td class="text-center fw-bold">${escapeHtml(m.total)}</td>
+                <td class="text-center text-primary fw-bold">${escapeHtml(Number(m.rataRata || 0).toFixed(2))}</td>
+              </tr>`;
+          }).join('');
+
+          if (!tbodyHtml) {
+            tbodyHtml = '<tr><td colspan="10" class="text-center text-muted py-4">Belum ada data nilai rapor yang tersedia.</td></tr>';
+          }
+
+          document.getElementById('view-container').innerHTML = `
+            ${refreshBar}
+            <div class="row g-3 mb-3">
+              <div class="col-md-6">
+                <div class="card p-3">
+                  <small class="text-muted">Skor Rapor (SR)</small>
+                  <h4 class="fw-bold text-primary mb-0">${escapeHtml(srDisplay)}</h4>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="card p-3">
+                  <small class="text-muted">Skor Mapel Khusus (SK)</small>
+                  <h4 class="fw-bold text-info mb-0">${escapeHtml(skDisplay)}</h4>
+                </div>
+              </div>
+            </div>
+            <div class="card p-3">
+              <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3">
+                <h5 class="fw-bold mb-1 mb-md-0">Rekap Nilai Rapor Semester 1 s.d. 5</h5>
+                <span class="badge bg-light text-dark border">${escapeHtml(b.nama)} (${escapeHtml(b.kelas)} - ${escapeHtml(b.kelompok)})</span>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-bordered table-sm table-hover align-middle" style="font-size: 0.85rem;">
+                  <thead class="table-light">
+                    <tr>
+                      <th class="text-center">No</th>
+                      <th class="text-center">Kode</th>
+                      <th>Mata Pelajaran</th>
+                      <th class="text-center">Sem 1</th>
+                      <th class="text-center">Sem 2</th>
+                      <th class="text-center">Sem 3</th>
+                      <th class="text-center">Sem 4</th>
+                      <th class="text-center">Sem 5</th>
+                      <th class="text-center">Jumlah</th>
+                      <th class="text-center">Rata-rata</th>
+                    </tr>
+                  </thead>
+                  <tbody>${tbodyHtml}</tbody>
+                </table>
+              </div>
+              <small class="text-muted mt-2">Tanda <strong>-</strong> menunjukkan mata pelajaran tidak diambil pada semester tersebut.</small>
+            </div>`;
+          return;
+        }
+
+        if (view === 'murid_tka_prestasi') {
+          const nilaiTka = data.tka && data.tka.skor !== null ? data.tka.skor : '-';
+          const nilaiPrestasi = data.prestasi && data.prestasi.skor !== null ? data.prestasi.skor : '-';
+
+          document.getElementById('view-container').innerHTML = `
+            ${refreshBar}
+            <div class="row g-3 mb-4">
+              <div class="col-md-6">
+                <div class="card p-4 h-100 border-start border-4 border-info">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="fw-bold mb-0">Nilai TKA</h5>
+                    <i class="bi bi-file-earmark-text text-info fs-3"></i>
+                  </div>
+                  <p class="text-muted small mb-3">Skor Tes Kemampuan Akademik (TKA) yang tercatat pada sistem.</p>
+                  <div class="display-5 fw-bold text-info">${escapeHtml(nilaiTka)}</div>
+                  <div class="small text-muted mt-2">Bobot TKA: <strong>${escapeHtml(bobot.tka)}%</strong></div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="card p-4 h-100 border-start border-4 border-warning">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="fw-bold mb-0">Nilai Prestasi</h5>
+                    <i class="bi bi-trophy text-warning fs-3"></i>
+                  </div>
+                  <p class="text-muted small mb-3">Skor prestasi akademik/non-akademik yang telah diverifikasi.</p>
+                  <div class="display-5 fw-bold text-warning">${escapeHtml(nilaiPrestasi)}</div>
+                  <div class="small text-muted mt-2">Bobot Prestasi: <strong>${escapeHtml(bobot.prestasi)}%</strong></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card p-4">
+              <h5 class="fw-bold mb-3"><i class="bi bi-calculator me-2 text-primary"></i>Ringkasan Skor Gabungan (SG)</h5>
+              <div class="table-responsive">
+                <table class="table table-bordered align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Komponen Penilaian</th>
+                      <th class="text-center">Bobot</th>
+                      <th class="text-center">Nilai Tercatat</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Nilai Rapor (SR)</td>
+                      <td class="text-center">${escapeHtml(bobot.rapor)}%</td>
+                      <td class="text-center fw-semibold">${escapeHtml(srDisplay)}</td>
+                    </tr>
+                    <tr>
+                      <td>Nilai TKA (STKA)</td>
+                      <td class="text-center">${escapeHtml(bobot.tka)}%</td>
+                      <td class="text-center fw-semibold">${escapeHtml(stkaDisplay)}</td>
+                    </tr>
+                    <tr>
+                      <td>Nilai Prestasi (SP)</td>
+                      <td class="text-center">${escapeHtml(bobot.prestasi)}%</td>
+                      <td class="text-center fw-semibold">${escapeHtml(spDisplay)}</td>
+                    </tr>
+                    <tr class="table-success">
+                      <td colspan="2" class="fw-bold">Skor Gabungan Akhir (SG)</td>
+                      <td class="text-center fw-bold fs-5">${escapeHtml(sgDisplay)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>`;
+          return;
+        }
+
+        if (view === 'murid_eligibel') {
+          if (!annAccess.allowed) {
+            document.getElementById('view-container').innerHTML = `
+              ${refreshBar}
+              <div class="card p-4 text-center border-warning">
+                <div class="mb-2"><i class="bi bi-calendar-x-fill text-warning" style="font-size: 3.5rem;"></i></div>
+                <h4 class="fw-bold mb-2">Pengumuman Hasil Eligibel Belum Dibuka</h4>
+                <p class="text-muted mb-3">${escapeHtml(annAccess.message || 'Pengumuman hasil seleksi eligibel saat ini sedang ditutup oleh Admin.')}</p>
+                <div class="small text-muted">
+                  Anda tetap dapat memeriksa data <strong>Rekap Nilai Rapor</strong> dan <strong>Nilai TKA &amp; Prestasi</strong> selama portal murid dibuka.
+                </div>
+              </div>`;
+            return;
+          }
+
+          let bannerHtml = '';
+          if (!lokal) {
+            bannerHtml = `
+              <div class="alert alert-secondary text-center p-4">
+                <i class="bi bi-hourglass-split fs-1 d-block mb-2"></i>
+                <h4 class="fw-bold">Hasil Seleksi Belum Tersedia</h4>
+                <p class="mb-0">Proses pemeringkatan belum dijalankan oleh Admin/Operator. Silakan cek kembali secara berkala.</p>
+              </div>`;
+          } else if (isEligible) {
+            bannerHtml = `
+              <div class="alert alert-success text-center p-4">
+                <i class="bi bi-patch-check-fill fs-1 d-block mb-2"></i>
+                <h3 class="fw-bold">SELAMAT! ANDA DINYATAKAN ELIGIBEL</h3>
+                <p class="mb-0">Anda memenuhi syarat kuota eligibel pada kelompok <strong>${escapeHtml(b.kelompok)}</strong>.</p>
+              </div>`;
+          } else {
+            bannerHtml = `
+              <div class="alert alert-danger text-center p-4">
+                <i class="bi bi-x-octagon-fill fs-1 d-block mb-2"></i>
+                <h3 class="fw-bold">TIDAK ELIGIBEL</h3>
+                <p class="mb-0">Berdasarkan pemeringkatan atau status kesediaan saat ini, Anda belum masuk dalam kuota eligibel.</p>
+              </div>`;
+          }
+
+          document.getElementById('view-container').innerHTML = `
+            ${refreshBar}
+            <div class="card p-4">
+              <div class="text-center mb-3">
+                <h5 class="fw-bold mb-1">Hasil Seleksi E-Eligible Individu</h5>
+                <div class="text-muted">${escapeHtml(b.nama)} &middot; NIS ${escapeHtml(b.nis)} &middot; Kelas ${escapeHtml(b.kelas)} &middot; Kelompok ${escapeHtml(b.kelompok)}</div>
+              </div>
+              ${bannerHtml}
+              <div class="row g-3 mt-1">
+                <div class="col-md-6">
+                  <div class="card border p-3 h-100">
+                    <h6 class="fw-bold text-primary mb-3"><i class="bi bi-award me-2"></i>Peringkat Lokal (Kelompok ${escapeHtml(b.kelompok)})</h6>
+                    <ul class="list-group list-group-flush">
+                      <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Status Kesediaan</span>
+                        <strong>${escapeHtml(lokal ? lokal.kesediaan : (b.kesediaan || '-'))}</strong>
+                      </li>
+                      <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Peringkat Lokal</span>
+                        <strong class="fs-5">${escapeHtml(lokal ? lokal.peringkat : '-')}</strong>
+                      </li>
+                      <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Kuota Kelompok</span>
+                        <strong>${escapeHtml(lokal ? lokal.kuota : '-')}</strong>
+                      </li>
+                      <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Hasil Lokal</span>
+                        <span class="badge ${statusBadgeClass}">${escapeHtml(statusText)}</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="card border p-3 h-100">
+                    <h6 class="fw-bold text-success mb-3"><i class="bi bi-globe me-2"></i>Peringkat Global (Lintas Kelompok)</h6>
+                    <ul class="list-group list-group-flush">
+                      <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Skor Gabungan (SG)</span>
+                        <strong>${escapeHtml(sgDisplay)}</strong>
+                      </li>
+                      <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Peringkat Global</span>
+                        <strong class="fs-5">${escapeHtml(global ? global.peringkatGlobal : '-')}</strong>
+                      </li>
+                      <li class="list-group-item d-flex justify-content-between px-0">
+                        <span class="text-muted">Status Global</span>
+                        <span class="badge ${global ? 'bg-success' : 'bg-secondary'}">${escapeHtml(global ? global.hasil : 'Tidak Masuk Peringkat Global')}</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+        }
+      };
+
+      if (studentPortalCache && !forceRefresh) {
+        renderWithData(studentPortalCache);
+        return;
+      }
+
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (res && res.success) {
+            studentPortalCache = res;
+          }
+          renderWithData(res);
+        })
+        .withFailureHandler(err => {
+          showLoading(false);
+          notify(false, "Gagal Memuat Data", "Terjadi kesalahan saat mengambil data murid dari server.");
+        })
+        .getStudentPortalData(user.nis);
+    }
+
+    function renderStudentAccessPage() {
+      if (!user || user.role !== 'admin') {
+        notify(false, "Akses Ditolak", "Menu ini hanya tersedia untuk Admin.");
+        return navigate('dashboard');
+      }
+
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (!res || !res.success) {
+            return notify(false, "Gagal Memuat", res?.message || "Tidak dapat memuat pengaturan akses murid.");
+          }
+
+          const cfg = res.config || { mode: 'OTOMATIS', startDate: '', endDate: '', message: '' };
+          const st = res.status || { allowed: true, label: 'TERBUKA', message: '' };
+          const annCfg = res.announcementConfig || { mode: 'OTOMATIS', startDate: '', endDate: '', message: '' };
+          const annSt = res.announcementStatus || { allowed: true, label: 'TERBUKA', message: '' };
+          const serverTime = res.serverTime || '-';
+
+          const badgeClass = st.allowed ? 'bg-success' : 'bg-danger';
+          const alertClass = st.allowed ? 'alert-success' : 'alert-danger';
+          const statusIcon = st.allowed ? 'bi-unlock-fill' : 'bi-lock-fill';
+
+          const annBadgeClass = annSt.allowed ? 'bg-success' : 'bg-danger';
+          const annAlertClass = annSt.allowed ? 'alert-success' : 'alert-danger';
+          const annStatusIcon = annSt.allowed ? 'bi-megaphone-fill' : 'bi-lock-fill';
+
+          document.getElementById('view-container').innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <div class="small text-muted">
+                <i class="bi bi-clock me-1"></i>Waktu Server: <strong class="text-dark">${escapeHtml(serverTime)}</strong>
+              </div>
+              <button class="btn btn-outline-secondary btn-sm" onclick="renderStudentAccessPage()">
+                <i class="bi bi-arrow-clockwise me-1"></i> Refresh Status
+              </button>
+            </div>
+
+            <div class="row g-4">
+              <!-- KARTU 1: AKSES PORTAL MURID -->
+              <div class="col-lg-6">
+                <div class="card p-4 h-100">
+                  <h5 class="fw-bold mb-3 pb-2 border-bottom">
+                    <i class="bi bi-person-lock me-2 text-primary"></i>1. Akses Portal Murid (Login &amp; Cek Nilai)
+                  </h5>
+
+                  <div class="alert ${alertClass} py-2 px-3 mb-3">
+                    <div class="fw-bold">
+                      <i class="bi ${statusIcon} me-1"></i>Status:
+                      <span class="badge ${badgeClass} ms-1">${escapeHtml(st.label)}</span>
+                    </div>
+                    <div class="small mt-1">${escapeHtml(st.message)}</div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label for="akses-mode" class="form-label fw-bold small">Mode Akses Portal Murid</label>
+                    <select id="akses-mode" class="form-select" onchange="updateAccessModeUI()">
+                      <option value="OTOMATIS" ${cfg.mode === 'OTOMATIS' ? 'selected' : ''}>Otomatis Berbasis Tanggal (Ikuti Jadwal)</option>
+                      <option value="BUKA" ${cfg.mode === 'BUKA' ? 'selected' : ''}>Buka Akses Manual (Selalu Terbuka)</option>
+                      <option value="TUTUP" ${cfg.mode === 'TUTUP' ? 'selected' : ''}>Tutup Akses Manual (Selalu Tertutup)</option>
+                    </select>
+                  </div>
+
+                  <div id="akses-schedule-box" class="p-3 rounded border bg-light mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <span class="fw-bold small text-primary"><i class="bi bi-clock-history me-1"></i>Jadwal Tanggal &amp; Jam Portal</span>
+                      <button type="button" class="btn btn-link btn-sm text-decoration-none p-0" onclick="clearAccessDates()">
+                        <i class="bi bi-x-circle me-1"></i>Kosongkan
+                      </button>
+                    </div>
+                    <div class="row g-2">
+                      <div class="col-md-6">
+                        <label for="akses-start" class="form-label small fw-semibold">Tanggal &amp; Jam Buka</label>
+                        <input type="datetime-local" id="akses-start" class="form-control form-control-sm" value="${escapeHtml(cfg.startDate)}">
+                      </div>
+                      <div class="col-md-6">
+                        <label for="akses-end" class="form-label small fw-semibold">Tanggal &amp; Jam Tutup</label>
+                        <input type="datetime-local" id="akses-end" class="form-control form-control-sm" value="${escapeHtml(cfg.endDate)}">
+                      </div>
+                    </div>
+                    <div id="akses-mode-hint" class="form-text mt-2"></div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label for="akses-message" class="form-label fw-bold small">Pesan Saat Portal Murid Ditutup</label>
+                    <textarea id="akses-message" class="form-control form-control-sm" rows="3" placeholder="Contoh: Akses portal murid sedang ditutup.">${escapeHtml(cfg.message)}</textarea>
+                  </div>
+
+                  <div class="mt-auto d-flex justify-content-end">
+                    <button type="button" class="btn btn-primary fw-bold px-4" onclick="saveStudentAccessSettings()">
+                      <i class="bi bi-cloud-arrow-up me-2"></i>SIMPAN AKSES PORTAL
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- KARTU 2: AKSES PENGUMUMAN ELIGIBEL -->
+              <div class="col-lg-6">
+                <div class="card p-4 h-100">
+                  <h5 class="fw-bold mb-3 pb-2 border-bottom">
+                    <i class="bi bi-patch-check me-2 text-success"></i>2. Akses Khusus Pengumuman Eligibel
+                  </h5>
+
+                  <div class="alert ${annAlertClass} py-2 px-3 mb-3">
+                    <div class="fw-bold">
+                      <i class="bi ${annStatusIcon} me-1"></i>Status:
+                      <span class="badge ${annBadgeClass} ms-1">${escapeHtml(annSt.label)}</span>
+                    </div>
+                    <div class="small mt-1">${escapeHtml(annSt.message)}</div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label for="pengumuman-mode" class="form-label fw-bold small">Mode Pengumuman Eligibel</label>
+                    <select id="pengumuman-mode" class="form-select" onchange="updateAnnouncementModeUI()">
+                      <option value="OTOMATIS" ${annCfg.mode === 'OTOMATIS' ? 'selected' : ''}>Otomatis Berbasis Tanggal (Ikuti Jadwal)</option>
+                      <option value="BUKA" ${annCfg.mode === 'BUKA' ? 'selected' : ''}>Buka Pengumuman Manual (Selalu Terbuka)</option>
+                      <option value="TUTUP" ${annCfg.mode === 'TUTUP' ? 'selected' : ''}>Tutup Pengumuman Manual (Selalu Tertutup)</option>
+                    </select>
+                  </div>
+
+                  <div id="pengumuman-schedule-box" class="p-3 rounded border bg-light mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <span class="fw-bold small text-success"><i class="bi bi-calendar-event me-1"></i>Jadwal Tanggal &amp; Jam Pengumuman</span>
+                      <button type="button" class="btn btn-link btn-sm text-decoration-none p-0" onclick="clearAnnouncementDates()">
+                        <i class="bi bi-x-circle me-1"></i>Kosongkan
+                      </button>
+                    </div>
+                    <div class="row g-2">
+                      <div class="col-md-6">
+                        <label for="pengumuman-start" class="form-label small fw-semibold">Tanggal &amp; Jam Buka</label>
+                        <input type="datetime-local" id="pengumuman-start" class="form-control form-control-sm" value="${escapeHtml(annCfg.startDate)}">
+                      </div>
+                      <div class="col-md-6">
+                        <label for="pengumuman-end" class="form-label small fw-semibold">Tanggal &amp; Jam Tutup</label>
+                        <input type="datetime-local" id="pengumuman-end" class="form-control form-control-sm" value="${escapeHtml(annCfg.endDate)}">
+                      </div>
+                    </div>
+                    <div id="pengumuman-mode-hint" class="form-text mt-2"></div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label for="pengumuman-message" class="form-label fw-bold small">Pesan Saat Pengumuman Eligibel Ditutup</label>
+                    <textarea id="pengumuman-message" class="form-control form-control-sm" rows="3" placeholder="Contoh: Pengumuman hasil eligibel dibuka tanggal ...">${escapeHtml(annCfg.message)}</textarea>
+                  </div>
+
+                  <div class="mt-auto d-flex justify-content-end">
+                    <button type="button" class="btn btn-success fw-bold px-4" onclick="saveEligibleAnnouncementSettings()">
+                      <i class="bi bi-cloud-arrow-up me-2"></i>SIMPAN PENGUMUMAN
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- PANDUAN -->
+              <div class="col-12">
+                <div class="card p-4">
+                  <h6 class="fw-bold text-primary mb-2"><i class="bi bi-info-circle me-2"></i>Panduan Penggunaan</h6>
+                  <ul class="small text-muted ps-3 mb-0">
+                    <li class="mb-1"><strong>Akses Portal Murid:</strong> Mengontrol apakah murid dapat login dan melihat Rekap Nilai Rapor, Nilai TKA, serta Nilai Prestasi.</li>
+                    <li class="mb-1"><strong>Akses Khusus Pengumuman Eligibel:</strong> Mengontrol khusus tampilan status <em>Eligibel / Tidak Eligibel</em> serta Peringkat Lokal &amp; Global milik murid. Data peringkat tidak dikirim ke murid selama pengumuman ditutup.</li>
+                    <li class="mb-1"><strong>Skenario Umum:</strong> Buka <em>Portal Murid</em> lebih awal agar murid dapat memverifikasi nilai rapor/TKA/prestasi, sementara <em>Pengumuman Eligibel</em> tetap ditutup atau dijadwalkan otomatis ke hari pengumuman resmi.</li>
+                    <li>Kedua pengaturan ini <strong>hanya berlaku untuk akun Murid</strong>. Akun Admin dan Operator tetap dapat mengakses seluruh menu kapan saja.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          `;
+          updateAccessModeUI();
+          updateAnnouncementModeUI();
+        })
+        .withFailureHandler(err => {
+          showLoading(false);
+          notify(false, "Koneksi Gagal", "Tidak dapat memuat pengaturan akses murid dari server.");
+        })
+        .getStudentAccessConfig();
+    }
+
+    function updateAccessModeUI() {
+      const modeEl = document.getElementById('akses-mode');
+      const box = document.getElementById('akses-schedule-box');
+      const hint = document.getElementById('akses-mode-hint');
+      if (!modeEl || !box || !hint) return;
+
+      const mode = modeEl.value;
+      if (mode === 'OTOMATIS') {
+        box.style.opacity = '1';
+        hint.innerHTML = '<i class="bi bi-check-circle text-success me-1"></i>Jadwal tanggal di atas <strong>aktif digunakan</strong> untuk menentukan buka/tutup portal murid.';
+      } else if (mode === 'BUKA') {
+        box.style.opacity = '0.65';
+        hint.innerHTML = '<i class="bi bi-exclamation-circle text-warning me-1"></i>Mode <strong>Buka Manual</strong> dipilih. Jadwal tanggal diabaikan dan portal murid selalu terbuka.';
+      } else {
+        box.style.opacity = '0.65';
+        hint.innerHTML = '<i class="bi bi-exclamation-circle text-danger me-1"></i>Mode <strong>Tutup Manual</strong> dipilih. Jadwal tanggal diabaikan dan seluruh murid tidak dapat login.';
+      }
+    }
+
+    function clearAccessDates() {
+      const startEl = document.getElementById('akses-start');
+      const endEl = document.getElementById('akses-end');
+      if (startEl) startEl.value = '';
+      if (endEl) endEl.value = '';
+    }
+
+    function saveStudentAccessSettings() {
+      const mode = document.getElementById('akses-mode')?.value || 'OTOMATIS';
+      const startDate = document.getElementById('akses-start')?.value || '';
+      const endDate = document.getElementById('akses-end')?.value || '';
+      const message = document.getElementById('akses-message')?.value.trim() || '';
+
+      if (startDate && endDate && startDate > endDate) {
+        return notify(false, "Jadwal Tidak Valid", "Tanggal & Jam Tutup tidak boleh lebih awal dari Tanggal & Jam Buka.");
+      }
+
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (res && res.success) {
+            notify(true, "Pengaturan Disimpan", "Pengaturan akses portal murid berhasil diperbarui (" + (res.status?.label || mode) + ").");
+            renderStudentAccessPage();
+          } else {
+            notify(false, "Gagal Menyimpan", res?.message || "Terjadi kesalahan saat menyimpan pengaturan.");
+          }
+        })
+        .withFailureHandler(err => {
+          showLoading(false);
+          notify(false, "Koneksi Gagal", "Tidak dapat terhubung ke server untuk menyimpan pengaturan akses.");
+        })
+        .saveStudentAccessConfig({ mode, startDate, endDate, message });
+    }
+
+    function updateAnnouncementModeUI() {
+      const modeEl = document.getElementById('pengumuman-mode');
+      const box = document.getElementById('pengumuman-schedule-box');
+      const hint = document.getElementById('pengumuman-mode-hint');
+      if (!modeEl || !box || !hint) return;
+
+      const mode = modeEl.value;
+      if (mode === 'OTOMATIS') {
+        box.style.opacity = '1';
+        hint.innerHTML = '<i class="bi bi-check-circle text-success me-1"></i>Jadwal tanggal di atas <strong>aktif digunakan</strong> untuk menentukan buka/tutup pengumuman eligibel.';
+      } else if (mode === 'BUKA') {
+        box.style.opacity = '0.65';
+        hint.innerHTML = '<i class="bi bi-exclamation-circle text-warning me-1"></i>Mode <strong>Buka Manual</strong> dipilih. Pengumuman hasil eligibel langsung terbuka untuk murid.';
+      } else {
+        box.style.opacity = '0.65';
+        hint.innerHTML = '<i class="bi bi-exclamation-circle text-danger me-1"></i>Mode <strong>Tutup Manual</strong> dipilih. Pengumuman eligibel disembunyikan meskipun portal murid terbuka.';
+      }
+    }
+
+    function clearAnnouncementDates() {
+      const startEl = document.getElementById('pengumuman-start');
+      const endEl = document.getElementById('pengumuman-end');
+      if (startEl) startEl.value = '';
+      if (endEl) endEl.value = '';
+    }
+
+    function saveEligibleAnnouncementSettings() {
+      const mode = document.getElementById('pengumuman-mode')?.value || 'OTOMATIS';
+      const startDate = document.getElementById('pengumuman-start')?.value || '';
+      const endDate = document.getElementById('pengumuman-end')?.value || '';
+      const message = document.getElementById('pengumuman-message')?.value.trim() || '';
+
+      if (startDate && endDate && startDate > endDate) {
+        return notify(false, "Jadwal Tidak Valid", "Tanggal & Jam Tutup pengumuman tidak boleh lebih awal dari Tanggal & Jam Buka.");
+      }
+
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (res && res.success) {
+            notify(true, "Pengaturan Disimpan", "Pengaturan pengumuman eligibel berhasil diperbarui (" + (res.status?.label || mode) + ").");
+            renderStudentAccessPage();
+          } else {
+            notify(false, "Gagal Menyimpan", res?.message || "Terjadi kesalahan saat menyimpan pengaturan pengumuman.");
+          }
+        })
+        .withFailureHandler(err => {
+          showLoading(false);
+          notify(false, "Koneksi Gagal", "Tidak dapat terhubung ke server untuk menyimpan pengaturan pengumuman.");
+        })
+        .saveEligibleAnnouncementConfig({ mode, startDate, endDate, message });
     }
 
     function renderDashboard() {
@@ -692,9 +1391,20 @@
       const table = document.getElementById('crud-table');
       if(!table) return;
       
+      const hiddenPwIdx = parseInt(table.dataset.hiddenPwIdx ?? '-1', 10);
       const rows = Array.from(table.querySelectorAll('tbody tr'));
       const data = rows
-        .map(row => Array.from(row.cells).map(cell => cell.innerText.trim()))
+        .map(row => {
+          const cellsData = Array.from(row.cells).map(cell => cell.innerText.trim());
+          // Fallback pengaman jika backend masih mengirim kolom Password
+          if (view === 'users' && hiddenPwIdx !== -1 && cellsData[0] !== "") {
+            const preservedPw = row.hasAttribute('data-hidden-pw')
+              ? row.getAttribute('data-hidden-pw')
+              : cellsData[0];
+            cellsData.splice(hiddenPwIdx, 0, preservedPw);
+          }
+          return cellsData;
+        })
         .filter(rowData => rowData[0] !== ""); // Lewati baris yang kolom pertamanya kosong
       
       if (data.length === 0) return notify(false, "Peringatan", "Tidak ada data untuk disimpan.");
@@ -722,8 +1432,20 @@
       showLoading(true);
       google.script.run.withSuccessHandler(res => {
         showLoading(false);
-        const headers = res.headers;
-        const rows = res.rows;
+        const rawHeaders = res.headers || [];
+        const rawRows = res.rows || [];
+        const isUsers = (view === 'users');
+        const hiddenPasswordIdx = isUsers
+          ? rawHeaders.findIndex(h => String(h || '').trim().toLowerCase() === 'password')
+          : -1;
+
+        // Pastikan kolom Password tidak dirender pada menu Kelola User
+        const headers = hiddenPasswordIdx !== -1
+          ? rawHeaders.filter((_, idx) => idx !== hiddenPasswordIdx)
+          : rawHeaders;
+        const rows = hiddenPasswordIdx !== -1
+          ? rawRows.map(r => r.filter((_, idx) => idx !== hiddenPasswordIdx))
+          : rawRows;
         
         // Aturan validasi
         const rules = res.kelompokRules || {};
@@ -789,7 +1511,11 @@
               >${cellHtmlContent}</td>`;
           }).join('');
 
-          return `<tr>${cellsHtml}</tr>`;
+          const hiddenPwAttr = hiddenPasswordIdx !== -1
+            ? ` data-hidden-pw="${escapeHtml(rawRows[rowIndex][hiddenPasswordIdx] ?? '')}"`
+            : '';
+
+          return `<tr${hiddenPwAttr}>${cellsHtml}</tr>`;
         }).join('');
 
         if (rows.length === 0) {
@@ -809,13 +1535,17 @@
               </div>
             </div>
             <div class="table-responsive">
-              <table id="crud-table" class="table table-sm table-bordered align-middle" style="font-size: 0.85rem;">
+              <table id="crud-table" data-hidden-pw-idx="${hiddenPasswordIdx}" class="table table-sm table-bordered align-middle" style="font-size: 0.85rem;">
                 <thead><tr>${headersHtml}</tr></thead>
                 <tbody>${rowsHtml}</tbody>
               </table>
             </div>
             <div class="mt-3 d-flex flex-column flex-md-row justify-content-between align-items-md-center">
-              <small class="text-muted mb-2 mb-md-0"><sup>*</sup> Kolom berwarna abu-abu tidak dapat diisi / otomatis dari sistem.</small>
+              <small class="text-muted mb-2 mb-md-0">
+                ${isUsers
+                  ? '<sup>*</sup> Kolom Password disembunyikan demi keamanan. Password akun lama tetap dipertahankan; akun baru menggunakan Username sebagai password awal.'
+                  : '<sup>*</sup> Kolom berwarna abu-abu tidak dapat diisi / otomatis dari sistem.'}
+              </small>
               <button class="btn btn-success fw-bold px-4" onclick="handleSaveData('${view}')">
                 <i class="bi bi-cloud-arrow-up me-2"></i> SIMPAN PERUBAHAN
               </button>
