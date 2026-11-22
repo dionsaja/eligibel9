@@ -118,6 +118,9 @@
         </div>
       </div>
       <button class="btn btn-primary w-100 py-2 fw-bold" onclick="handleLogin()">LOGIN</button>
+      <div class="text-center text-muted mt-3" style="font-size: 0.78rem;">
+        <i class="bi bi-info-circle me-1"></i>Murid: login menggunakan <strong>NIS</strong> sebagai Username &amp; Password.
+      </div>
       <div class="text-center mt-2">
         <button type="button" class="btn btn-link btn-sm text-decoration-none p-0" onclick="openForgotPasswordModal()">
           <i class="bi bi-key me-1"></i>Lupa password? Minta reset ke Admin
@@ -202,9 +205,15 @@
           <h5 class="fw-bold mb-0"><i class="bi bi-key-fill text-warning me-2"></i>Minta Reset Password</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
+        <p class="text-muted small mb-3">
+          Khusus untuk <strong>Murid</strong> dan <strong>Operator</strong> yang lupa password lama. Masukkan Username atau NIS Anda untuk mengajukan permintaan reset password ke Admin.
+        </p>
         <div class="mb-3">
-          <label for="forgot-username" class="form-label small fw-bold">Username</label>
-          <input type="text" id="forgot-username" class="form-control" placeholder="Masukkan Username">
+          <label for="forgot-username" class="form-label small fw-bold">Username / NIS</label>
+          <input type="text" id="forgot-username" class="form-control" placeholder="Masukkan Username Operator atau NIS Murid">
+        </div>
+        <div class="alert alert-light border small text-muted py-2 mb-3">
+          Setelah direset oleh Admin, password akan kembali ke default: <strong>NIS</strong> (Murid) atau <strong>912345*#</strong> (Operator).
         </div>
         <div class="d-flex justify-content-end gap-2">
           <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
@@ -229,6 +238,25 @@
           <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
           <button type="button" class="btn btn-danger btn-sm fw-bold" onclick="confirmResetPassword()">
             <i class="bi bi-check-lg me-1"></i> Ya, Reset Password
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Konfirmasi Umum (Verifikasi / Pengunduran Diri) -->
+  <div class="modal fade" id="actionConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 id="action-confirm-title" class="fw-bold mb-0">Konfirmasi</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <p id="action-confirm-text" class="text-muted small mb-3"></p>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="button" id="action-confirm-ok-btn" class="btn btn-primary btn-sm fw-bold" onclick="executePendingActionConfirm()">
+            <i class="bi bi-check-lg me-1"></i> Ya, Lanjutkan
           </button>
         </div>
       </div>
@@ -300,14 +328,35 @@
     let currentView = '';
     let studentPortalCache = null;
     let pendingResetTarget = { username: '', role: '' };
+    let pendingActionConfirmCallback = null;
+    let verificationMonitorItems = [];
+    const WITHDRAWAL_TEMPLATE_URL = "https://docs.google.com/document/d/1GY0Ea-APvvw1ReBG3mtWR-z8gA2oXglE/edit?usp=sharing&ouid=101865774977786323963&rtpof=true&sd=true";
+    const EVIDENCE_GUIDE = {
+      'Biodata': 'Kartu Keluarga (KK)',
+      'Nilai Rapor': 'Bukti Rapor Asli',
+      'Nilai TKA': 'Sertifikat Hasil TKA',
+      'Skor Prestasi': 'Sertifikat Prestasi / Suket dari Kesiswaan'
+    };
     const modal = new bootstrap.Modal(document.getElementById('statusModal'));
     const forgotPasswordModal = new bootstrap.Modal(document.getElementById('forgotPasswordModal'));
     const confirmResetModal = new bootstrap.Modal(document.getElementById('confirmResetModal'));
+    const actionConfirmModal = new bootstrap.Modal(document.getElementById('actionConfirmModal'));
 
-    function escapeHtml(value) {
-      return String(value ?? '').replace(/[&<>"']/g, ch => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-      }[ch]));
+    function openActionConfirmModal(title, htmlMessage, okLabel, okBtnClass, onConfirm) {
+      document.getElementById('action-confirm-title').innerText = title;
+      document.getElementById('action-confirm-text').innerHTML = htmlMessage;
+      const okBtn = document.getElementById('action-confirm-ok-btn');
+      okBtn.className = `btn ${okBtnClass || 'btn-primary'} btn-sm fw-bold`;
+      okBtn.innerHTML = `<i class="bi bi-check-lg me-1"></i> ${escapeHtml(okLabel || 'Ya, Lanjutkan')}`;
+      pendingActionConfirmCallback = onConfirm;
+      actionConfirmModal.show();
+    }
+
+    function executePendingActionConfirm() {
+      actionConfirmModal.hide();
+      const cb = pendingActionConfirmCallback;
+      pendingActionConfirmCallback = null;
+      if (typeof cb === 'function') cb();
     }
 
     function toggleSidebar() {
@@ -380,6 +429,8 @@
           {id:'rekapnilai', icon:'table', label:'Rekap Nilai'},
           {id:'peringkatlokal', icon:'award', label:'Peringkat Lokal'},
           {id:'peringkatglobal', icon:'globe', label:'Peringkat Global'},
+          {id:'verifikasimurid', icon:'clipboard-check', label:'Verifikasi Murid'},
+          {id:'pengundurandiri', icon:'file-earmark-x', label:'Pengunduran Diri'},
           {id:'aksesmurid', icon:'calendar-check', label:'Akses Murid'}
         ],
         operator: [
@@ -394,13 +445,17 @@
           {id:'rekapnilai', icon:'table', label:'Rekap Nilai'},
           {id:'peringkatlokal', icon:'award', label:'Peringkat Lokal'},
           {id:'peringkatglobal', icon:'globe', label:'Peringkat Global'},
+          {id:'verifikasimurid', icon:'clipboard-check', label:'Verifikasi Murid'},
+          {id:'pengundurandiri', icon:'file-earmark-x', label:'Pengunduran Diri'},
           {id:'gantipassword', icon:'key', label:'Ganti Password'}
         ],
         murid: [
           {id:'murid_beranda', icon:'person-circle', label:'Profil & Ringkasan'},
           {id:'murid_rapor', icon:'journal-text', label:'Rekap Nilai Rapor'},
           {id:'murid_tka_prestasi', icon:'trophy', label:'Nilai TKA & Prestasi'},
-          {id:'murid_eligibel', icon:'patch-check', label:'Hasil Eligibel'},
+          {id:'murid_verifikasi', icon:'clipboard-check', label:'Verifikasi Data'},
+          {id:'murid_praeligibel', icon:'file-earmark-check', label:'Pra-Eligibel'},
+          {id:'murid_eligibel', icon:'patch-check', label:'Eligibel Final'},
           {id:'gantipassword', icon:'key', label:'Ganti Password'}
         ]
       };
@@ -429,8 +484,12 @@
         murid_beranda: 'PROFIL & RINGKASAN MURID',
         murid_rapor: 'REKAP NILAI RAPOR',
         murid_tka_prestasi: 'NILAI TKA & PRESTASI',
-        murid_eligibel: 'HASIL SELEKSI ELIGIBEL',
-        aksesmurid: 'PENGATURAN AKSES MURID',
+        murid_verifikasi: 'VERIFIKASI DATA MURID',
+        murid_praeligibel: 'PENGUMUMAN PRA-ELIGIBEL & PENGUNDURAN DIRI',
+        murid_eligibel: 'HASIL SELEKSI ELIGIBEL FINAL',
+        verifikasimurid: 'MONITORING VERIFIKASI MURID',
+        pengundurandiri: 'PENGELOLAAN PENGUNDURAN DIRI',
+        aksesmurid: 'PENGATURAN AKSES & JADWAL MURID',
         gantipassword: 'GANTI PASSWORD'
       };
       document.getElementById('page-title').innerText = studentTitles[view] || view.toUpperCase();
@@ -443,6 +502,16 @@
 
       if (view === 'aksesmurid') {
         renderStudentAccessPage();
+        return;
+      }
+
+      if (view === 'verifikasimurid') {
+        renderVerificationMonitorPage();
+        return;
+      }
+
+      if (view === 'pengundurandiri') {
+        renderWithdrawalMonitorPage();
         return;
       }
 
@@ -491,6 +560,11 @@
 
         const b = data.biodata || {};
         const rekap = data.rekap;
+        const verAccess = data.verificationAccess || { allowed: false, message: '' };
+        const verData = data.verification || null;
+        const praAccess = data.preEligibleAccess || { allowed: false, message: '' };
+        const praData = praAccess.allowed ? data.preEligible : null;
+        const wdData = data.withdrawal || null;
         const annAccess = data.announcementAccess || { allowed: true, message: '' };
         const lokal = annAccess.allowed ? data.peringkatLokal : null;
         const global = annAccess.allowed ? data.peringkatGlobal : null;
@@ -509,6 +583,12 @@
         const stkaDisplay = rekap && rekap.STKA !== '' && rekap.STKA !== undefined ? rekap.STKA : (data.tka?.skor !== null ? data.tka.skor : '-');
         const spDisplay = rekap && rekap.SP !== '' && rekap.SP !== undefined ? rekap.SP : (data.prestasi?.skor !== null ? data.prestasi.skor : '-');
         const skDisplay = rekap && rekap.SK !== '' && rekap.SK !== undefined ? rekap.SK : '-';
+
+        const verStatusBadge = verData
+          ? (verData.status === 'Semua Data Sudah Benar'
+              ? '<span class="badge bg-success">Semua Data Sudah Benar</span>'
+              : `<span class="badge bg-warning text-dark">Perlu Perbaikan (${escapeHtml(verData.tindakLanjut || 'Menunggu Operator')})</span>`)
+          : '<span class="badge bg-secondary">Belum Verifikasi</span>';
 
         const refreshBar = `
           <div class="d-flex justify-content-end mb-3">
@@ -532,7 +612,7 @@
                   </div>
                 </div>
                 <div class="text-md-end">
-                  <div class="small opacity-75 mb-1">Status Eligibel Anda</div>
+                  <div class="small opacity-75 mb-1">Status Eligibel Final</div>
                   <span class="badge ${statusBadgeClass} fs-6 px-3 py-2 border border-white">${escapeHtml(statusText.toUpperCase())}</span>
                 </div>
               </div>
@@ -565,6 +645,37 @@
               </div>
             </div>
 
+            <div class="card p-4 mb-4">
+              <h5 class="fw-bold mb-3"><i class="bi bi-list-check me-2 text-primary"></i>Status Tahapan Anda</h5>
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <div class="p-3 rounded border h-100">
+                    <div class="small text-muted mb-1">1. Verifikasi Data</div>
+                    <div class="mb-2">${verStatusBadge}</div>
+                    <div class="small text-muted">${escapeHtml(verAccess.label || '')}</div>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="p-3 rounded border h-100">
+                    <div class="small text-muted mb-1">2. Pengumuman Pra-Eligibel</div>
+                    <div class="mb-2">
+                      <span class="badge ${praAccess.allowed ? 'bg-info text-dark' : 'bg-secondary'}">
+                        ${praAccess.allowed ? 'Dibuka' : 'Belum Dibuka / Ditutup'}
+                      </span>
+                    </div>
+                    <div class="small text-muted">${wdData ? 'Pengunduran Diri: ' + escapeHtml(wdData.status) : escapeHtml(praAccess.label || '')}</div>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="p-3 rounded border h-100">
+                    <div class="small text-muted mb-1">3. Hasil Eligibel Final</div>
+                    <div class="mb-2"><span class="badge ${statusBadgeClass}">${escapeHtml(statusText)}</span></div>
+                    <div class="small text-muted">${escapeHtml(annAccess.label || '')}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="card p-4">
               <h5 class="fw-bold mb-3"><i class="bi bi-compass me-2 text-primary"></i>Akses Cepat</h5>
               <div class="d-flex flex-wrap gap-2">
@@ -574,8 +685,14 @@
                 <button class="btn btn-outline-warning text-dark" onclick="navigate('murid_tka_prestasi')">
                   <i class="bi bi-trophy me-1"></i> Lihat Nilai TKA &amp; Prestasi
                 </button>
+                <button class="btn btn-primary" onclick="navigate('murid_verifikasi')">
+                  <i class="bi bi-clipboard-check me-1"></i> Verifikasi Data Saya
+                </button>
+                <button class="btn btn-info text-dark fw-semibold" onclick="navigate('murid_praeligibel')">
+                  <i class="bi bi-file-earmark-check me-1"></i> Cek Pra-Eligibel
+                </button>
                 <button class="btn btn-success" onclick="navigate('murid_eligibel')">
-                  <i class="bi bi-patch-check me-1"></i> Cek Hasil Eligibel
+                  <i class="bi bi-patch-check me-1"></i> Cek Eligibel Final
                 </button>
               </div>
             </div>`;
@@ -583,48 +700,35 @@
         }
 
         if (view === 'murid_rapor') {
-          const raporRows = Array.isArray(data.rapor) ? data.rapor : [];
-          let tbodyHtml = raporRows.map((m, idx) => {
-            const khususBadge = m.isKhusus ? '<span class="badge bg-info text-dark ms-1">Khusus</span>' : '';
-            return `
-              <tr>
-                <td class="text-center">${idx + 1}</td>
-                <td class="text-center fw-semibold">${escapeHtml(m.kode)}</td>
-                <td>${escapeHtml(m.nama)}${khususBadge}</td>
-                <td class="text-center">${escapeHtml(m.sem1 === '' ? '-' : m.sem1)}</td>
-                <td class="text-center">${escapeHtml(m.sem2 === '' ? '-' : m.sem2)}</td>
-                <td class="text-center">${escapeHtml(m.sem3 === '' ? '-' : m.sem3)}</td>
-                <td class="text-center">${escapeHtml(m.sem4 === '' ? '-' : m.sem4)}</td>
-                <td class="text-center">${escapeHtml(m.sem5 === '' ? '-' : m.sem5)}</td>
-                <td class="text-center fw-bold">${escapeHtml(m.total)}</td>
-                <td class="text-center text-primary fw-bold">${escapeHtml(Number(m.rataRata || 0).toFixed(2))}</td>
-              </tr>`;
-          }).join('');
-
-          if (!tbodyHtml) {
-            tbodyHtml = '<tr><td colspan="10" class="text-center text-muted py-4">Belum ada data nilai rapor yang tersedia.</td></tr>';
-          }
+          const raporList = Array.isArray(data.rapor) ? data.rapor : [];
+          const raporRowsHtml = raporList.map((m, idx) => `
+            <tr>
+              <td class="text-center">${idx + 1}</td>
+              <td class="text-center fw-semibold">${escapeHtml(m.kode)}</td>
+              <td>
+                ${escapeHtml(m.nama)}
+                ${m.isKhusus ? '<span class="badge bg-info text-dark ms-1">Mapel Khusus</span>' : ''}
+              </td>
+              <td class="text-center ${m.sem1 === '-' ? 'bg-light text-muted' : ''}">${escapeHtml(m.sem1 === '' ? '-' : m.sem1)}</td>
+              <td class="text-center ${m.sem2 === '-' ? 'bg-light text-muted' : ''}">${escapeHtml(m.sem2 === '' ? '-' : m.sem2)}</td>
+              <td class="text-center ${m.sem3 === '-' ? 'bg-light text-muted' : ''}">${escapeHtml(m.sem3 === '' ? '-' : m.sem3)}</td>
+              <td class="text-center ${m.sem4 === '-' ? 'bg-light text-muted' : ''}">${escapeHtml(m.sem4 === '' ? '-' : m.sem4)}</td>
+              <td class="text-center ${m.sem5 === '-' ? 'bg-light text-muted' : ''}">${escapeHtml(m.sem5 === '' ? '-' : m.sem5)}</td>
+              <td class="text-center fw-bold text-primary">${escapeHtml(m.rataRata)}</td>
+            </tr>`).join('');
 
           document.getElementById('view-container').innerHTML = `
             ${refreshBar}
-            <div class="row g-3 mb-3">
-              <div class="col-md-6">
-                <div class="card p-3">
-                  <small class="text-muted">Skor Rapor (SR)</small>
-                  <h4 class="fw-bold text-primary mb-0">${escapeHtml(srDisplay)}</h4>
-                </div>
-              </div>
-              <div class="col-md-6">
-                <div class="card p-3">
-                  <small class="text-muted">Skor Mapel Khusus (SK)</small>
-                  <h4 class="fw-bold text-info mb-0">${escapeHtml(skDisplay)}</h4>
-                </div>
-              </div>
-            </div>
             <div class="card p-3">
-              <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3">
-                <h5 class="fw-bold mb-1 mb-md-0">Rekap Nilai Rapor Semester 1 s.d. 5</h5>
-                <span class="badge bg-light text-dark border">${escapeHtml(b.nama)} (${escapeHtml(b.kelas)} - ${escapeHtml(b.kelompok)})</span>
+              <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3 gap-2">
+                <div>
+                  <h5 class="fw-bold mb-0"><i class="bi bi-journal-text me-2 text-primary"></i>Rekap Nilai Rapor (Semester 1 s.d. 5)</h5>
+                  <small class="text-muted">${escapeHtml(b.nama)} (NIS: ${escapeHtml(b.nis)}) &middot; Kelompok ${escapeHtml(b.kelompok)}</small>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  <span class="badge bg-primary fs-6 px-3 py-2">Skor Rapor (SR): ${escapeHtml(srDisplay)}</span>
+                  <span class="badge bg-info text-dark fs-6 px-3 py-2">Skor Khusus (SK): ${escapeHtml(skDisplay)}</span>
+                </div>
               </div>
               <div class="table-responsive">
                 <table class="table table-bordered table-sm table-hover align-middle" style="font-size: 0.85rem;">
@@ -638,45 +742,49 @@
                       <th class="text-center">Sem 3</th>
                       <th class="text-center">Sem 4</th>
                       <th class="text-center">Sem 5</th>
-                      <th class="text-center">Jumlah</th>
                       <th class="text-center">Rata-rata</th>
                     </tr>
                   </thead>
-                  <tbody>${tbodyHtml}</tbody>
+                  <tbody>
+                    ${raporRowsHtml || '<tr><td colspan="9" class="text-center text-muted py-4">Belum ada data nilai rapor yang tercatat.</td></tr>'}
+                  </tbody>
                 </table>
               </div>
-              <small class="text-muted mt-2">Tanda <strong>-</strong> menunjukkan mata pelajaran tidak diambil pada semester tersebut.</small>
+              <div class="small text-muted mt-2">
+                <sup>*</sup> Tanda strip (-) menandakan mata pelajaran tidak dihitung pada semester tersebut sesuai aturan kelompok Anda.
+              </div>
             </div>`;
           return;
         }
 
         if (view === 'murid_tka_prestasi') {
-          const nilaiTka = data.tka && data.tka.skor !== null ? data.tka.skor : '-';
-          const nilaiPrestasi = data.prestasi && data.prestasi.skor !== null ? data.prestasi.skor : '-';
-
           document.getElementById('view-container').innerHTML = `
             ${refreshBar}
-            <div class="row g-3 mb-4">
+            <div class="row g-4 mb-4">
               <div class="col-md-6">
-                <div class="card p-4 h-100 border-start border-4 border-info">
-                  <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h5 class="fw-bold mb-0">Nilai TKA</h5>
-                    <i class="bi bi-file-earmark-text text-info fs-3"></i>
+                <div class="card p-4 h-100 border-top border-4 border-info">
+                  <div class="d-flex align-items-center mb-3">
+                    <div class="bg-info-subtle text-info p-3 rounded-circle me-3"><i class="bi bi-file-earmark-text fs-4"></i></div>
+                    <div>
+                      <h5 class="fw-bold mb-0">Nilai TKA</h5>
+                      <small class="text-muted">Bobot TKA: ${escapeHtml(bobot.tka)}%</small>
+                    </div>
                   </div>
-                  <p class="text-muted small mb-3">Skor Tes Kemampuan Akademik (TKA) yang tercatat pada sistem.</p>
-                  <div class="display-5 fw-bold text-info">${escapeHtml(nilaiTka)}</div>
-                  <div class="small text-muted mt-2">Bobot TKA: <strong>${escapeHtml(bobot.tka)}%</strong></div>
+                  <div class="display-5 fw-bold text-info my-2">${escapeHtml(stkaDisplay)}</div>
+                  <div class="small text-muted">Nilai Tes Kemampuan Akademik yang tercatat pada sistem.</div>
                 </div>
               </div>
               <div class="col-md-6">
-                <div class="card p-4 h-100 border-start border-4 border-warning">
-                  <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h5 class="fw-bold mb-0">Nilai Prestasi</h5>
-                    <i class="bi bi-trophy text-warning fs-3"></i>
+                <div class="card p-4 h-100 border-top border-4 border-warning">
+                  <div class="d-flex align-items-center mb-3">
+                    <div class="bg-warning-subtle text-warning p-3 rounded-circle me-3"><i class="bi bi-trophy fs-4"></i></div>
+                    <div>
+                      <h5 class="fw-bold mb-0">Nilai Prestasi</h5>
+                      <small class="text-muted">Bobot Prestasi: ${escapeHtml(bobot.prestasi)}%</small>
+                    </div>
                   </div>
-                  <p class="text-muted small mb-3">Skor prestasi akademik/non-akademik yang telah diverifikasi.</p>
-                  <div class="display-5 fw-bold text-warning">${escapeHtml(nilaiPrestasi)}</div>
-                  <div class="small text-muted mt-2">Bobot Prestasi: <strong>${escapeHtml(bobot.prestasi)}%</strong></div>
+                  <div class="display-5 fw-bold text-warning my-2">${escapeHtml(spDisplay)}</div>
+                  <div class="small text-muted">Skor prestasi akademik/non-akademik yang telah diverifikasi sekolah.</div>
                 </div>
               </div>
             </div>
@@ -684,38 +792,329 @@
             <div class="card p-4">
               <h5 class="fw-bold mb-3"><i class="bi bi-calculator me-2 text-primary"></i>Ringkasan Skor Gabungan (SG)</h5>
               <div class="table-responsive">
-                <table class="table table-bordered align-middle mb-0">
+                <table class="table table-bordered table-sm align-middle mb-2" style="font-size: 0.88rem;">
                   <thead class="table-light">
                     <tr>
-                      <th>Komponen Penilaian</th>
+                      <th>Komponen</th>
+                      <th class="text-center">Nilai</th>
                       <th class="text-center">Bobot</th>
-                      <th class="text-center">Nilai Tercatat</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td>Nilai Rapor (SR)</td>
-                      <td class="text-center">${escapeHtml(bobot.rapor)}%</td>
+                      <td>Skor Rapor (SR)</td>
                       <td class="text-center fw-semibold">${escapeHtml(srDisplay)}</td>
+                      <td class="text-center">${escapeHtml(bobot.rapor)}%</td>
                     </tr>
                     <tr>
-                      <td>Nilai TKA (STKA)</td>
-                      <td class="text-center">${escapeHtml(bobot.tka)}%</td>
+                      <td>Skor TKA (STKA)</td>
                       <td class="text-center fw-semibold">${escapeHtml(stkaDisplay)}</td>
+                      <td class="text-center">${escapeHtml(bobot.tka)}%</td>
                     </tr>
                     <tr>
-                      <td>Nilai Prestasi (SP)</td>
-                      <td class="text-center">${escapeHtml(bobot.prestasi)}%</td>
+                      <td>Skor Prestasi (SP)</td>
                       <td class="text-center fw-semibold">${escapeHtml(spDisplay)}</td>
+                      <td class="text-center">${escapeHtml(bobot.prestasi)}%</td>
                     </tr>
-                    <tr class="table-success">
-                      <td colspan="2" class="fw-bold">Skor Gabungan Akhir (SG)</td>
-                      <td class="text-center fw-bold fs-5">${escapeHtml(sgDisplay)}</td>
+                    <tr class="table-success fw-bold">
+                      <td>Skor Gabungan (SG)</td>
+                      <td class="text-center fs-5" colspan="2">${escapeHtml(sgDisplay)}</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             </div>`;
+          return;
+        }
+
+        if (view === 'murid_verifikasi') {
+          const prevWrongParts = verData && verData.bagianSalah && verData.bagianSalah !== '-'
+            ? verData.bagianSalah.split(',').map(x => x.trim())
+            : [];
+          const prevNotes = verData && verData.catatan && verData.catatan !== '-' ? verData.catatan : '';
+
+          const currentStatusAlert = verData
+            ? (verData.status === 'Semua Data Sudah Benar'
+                ? `<div class="alert alert-success">
+                     <div class="fw-bold"><i class="bi bi-check-circle-fill me-2"></i>Status Verifikasi: Semua Data Sudah Benar</div>
+                     <div class="small mt-1">Tercatat pada: <strong>${escapeHtml(verData.waktu)}</strong>.</div>
+                   </div>`
+                : `<div class="alert alert-warning">
+                     <div class="fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i>Status Verifikasi: Perlu Perbaikan (${escapeHtml(verData.tindakLanjut)})</div>
+                     <div class="small mt-1">Bagian yang dilaporkan salah: <strong>${escapeHtml(verData.bagianSalah)}</strong></div>
+                     <div class="small">Catatan Anda: ${escapeHtml(verData.catatan)}</div>
+                     <div class="small">Waktu lapor: ${escapeHtml(verData.waktu)}</div>
+                     <hr class="my-2">
+                     <div class="small fw-bold mb-1">Segera hubungi Operator sekolah dengan membawa bukti resmi berikut:</div>
+                     <ul class="small mb-0 ps-3">
+                       ${prevWrongParts.map(p => `<li><strong>${escapeHtml(p)}</strong>: ${escapeHtml(EVIDENCE_GUIDE[p] || 'Dokumen pendukung asli')}</li>`).join('')}
+                     </ul>
+                   </div>`)
+            : `<div class="alert alert-info">
+                 <i class="bi bi-info-circle-fill me-2"></i>Anda belum melakukan verifikasi data. Periksa <strong>Biodata, Nilai Rapor, Nilai TKA, dan Skor Prestasi</strong> Anda terlebih dahulu sebelum mengonfirmasi.
+               </div>`;
+
+          const verificationFormHtml = !verAccess.allowed
+            ? `<div class="card p-4 text-center border-warning">
+                 <div class="mb-2"><i class="bi bi-lock-fill text-warning" style="font-size: 3rem;"></i></div>
+                 <h5 class="fw-bold mb-1">Masa Verifikasi Data Ditutup</h5>
+                 <p class="text-muted mb-0">${escapeHtml(verAccess.message || 'Masa verifikasi data oleh murid sedang ditutup oleh Admin.')}</p>
+               </div>`
+            : `<div class="row g-4">
+                 <div class="col-lg-5">
+                   <div class="card p-4 h-100 border-top border-4 border-success">
+                     <h5 class="fw-bold text-success mb-2"><i class="bi bi-check-circle-fill me-2"></i>Data Sudah Benar Semua</h5>
+                     <p class="small text-muted mb-4">
+                       Jika seluruh data <strong>Biodata, Nilai Rapor (Sem 1–5), Nilai TKA, dan Skor Prestasi</strong> Anda sudah sesuai dengan dokumen asli, klik tombol di bawah ini.
+                     </p>
+                     <button type="button" class="btn btn-success w-100 py-2 fw-bold mt-auto" onclick="handleStudentConfirmAllCorrect()">
+                       <i class="bi bi-check2-all me-2"></i>SEMUA DATA SUDAH BENAR
+                     </button>
+                   </div>
+                 </div>
+                 <div class="col-lg-7">
+                   <div class="card p-4 h-100 border-top border-4 border-danger">
+                     <h5 class="fw-bold text-danger mb-2"><i class="bi bi-exclamation-octagon-fill me-2"></i>Ada Kesalahan Input oleh Operator</h5>
+                     <p class="small text-muted mb-3">
+                       Centang bagian data yang salah di bawah ini, lalu kirim laporan dan segera hubungi Operator sekolah dengan menunjukkan dokumen bukti aslinya.
+                     </p>
+
+                     <div class="mb-3">
+                       <div class="form-check mb-2">
+                         <input class="form-check-input ver-wrong-cb" type="checkbox" value="Biodata" id="cb-wrong-biodata" ${prevWrongParts.includes('Biodata') ? 'checked' : ''} onchange="updateWrongPartEvidenceBox()">
+                         <label class="form-check-label small" for="cb-wrong-biodata">
+                           <strong>Biodata</strong> <span class="text-muted">(NIS, Nama, Kelas, Kelompok, Kesediaan)</span> &rarr; Bukti: <strong>Kartu Keluarga (KK)</strong>
+                         </label>
+                       </div>
+                       <div class="form-check mb-2">
+                         <input class="form-check-input ver-wrong-cb" type="checkbox" value="Nilai Rapor" id="cb-wrong-rapor" ${prevWrongParts.includes('Nilai Rapor') ? 'checked' : ''} onchange="updateWrongPartEvidenceBox()">
+                         <label class="form-check-label small" for="cb-wrong-rapor">
+                           <strong>Nilai Rapor</strong> <span class="text-muted">(Semester 1 s.d. 5)</span> &rarr; Bukti: <strong>Bukti Rapor Asli</strong>
+                         </label>
+                       </div>
+                       <div class="form-check mb-2">
+                         <input class="form-check-input ver-wrong-cb" type="checkbox" value="Nilai TKA" id="cb-wrong-tka" ${prevWrongParts.includes('Nilai TKA') ? 'checked' : ''} onchange="updateWrongPartEvidenceBox()">
+                         <label class="form-check-label small" for="cb-wrong-tka">
+                           <strong>Nilai TKA</strong> &rarr; Bukti: <strong>Sertifikat Hasil TKA</strong>
+                         </label>
+                       </div>
+                       <div class="form-check mb-2">
+                         <input class="form-check-input ver-wrong-cb" type="checkbox" value="Skor Prestasi" id="cb-wrong-prestasi" ${prevWrongParts.includes('Skor Prestasi') ? 'checked' : ''} onchange="updateWrongPartEvidenceBox()">
+                         <label class="form-check-label small" for="cb-wrong-prestasi">
+                           <strong>Skor Prestasi</strong> &rarr; Bukti: <strong>Sertifikat Prestasi / Suket dari Kesiswaan</strong>
+                         </label>
+                       </div>
+                     </div>
+
+                     <div id="ver-evidence-guide-box" class="alert alert-light border small py-2 px-3 mb-3" style="display: none;"></div>
+
+                     <div class="mb-3">
+                       <label for="ver-notes-input" class="form-label small fw-bold">Keterangan / Detail Kesalahan (Opsional)</label>
+                       <textarea id="ver-notes-input" class="form-control form-control-sm" rows="2" placeholder="Contoh: Ejaan nama kurang huruf / Nilai MTK Sem 3 tertulis 82 seharusnya 88">${escapeHtml(prevNotes)}</textarea>
+                     </div>
+
+                     <button type="button" class="btn btn-danger w-100 fw-bold" onclick="handleStudentReportError()">
+                       <i class="bi bi-send-exclamation me-2"></i>LAPORKAN KESALAHAN DATA
+                     </button>
+                   </div>
+                 </div>
+               </div>`;
+
+          document.getElementById('view-container').innerHTML = `
+            ${refreshBar}
+            ${currentStatusAlert}
+
+            <div class="card p-4 mb-4">
+              <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3 gap-2">
+                <h5 class="fw-bold mb-0"><i class="bi bi-person-vcard me-2 text-primary"></i>Ringkasan Data Anda untuk Diverifikasi</h5>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button class="btn btn-outline-primary btn-sm" onclick="navigate('murid_rapor')"><i class="bi bi-journal-text me-1"></i>Cek Rincian Rapor</button>
+                  <button class="btn btn-outline-warning text-dark btn-sm" onclick="navigate('murid_tka_prestasi')"><i class="bi bi-trophy me-1"></i>Cek TKA &amp; Prestasi</button>
+                </div>
+              </div>
+              <div class="row g-3 small">
+                <div class="col-md-6">
+                  <div class="p-3 rounded bg-light border h-100">
+                    <div class="fw-bold text-primary mb-2">1. Biodata Siswa</div>
+                    <div>NIS: <strong>${escapeHtml(b.nis)}</strong></div>
+                    <div>Nama: <strong>${escapeHtml(b.nama)}</strong></div>
+                    <div>Kelas: <strong>${escapeHtml(b.kelas || '-')}</strong> &nbsp;|&nbsp; Kelompok: <strong>${escapeHtml(b.kelompok || '-')}</strong></div>
+                    <div>Status Kesediaan: <strong>${escapeHtml(b.kesediaan || '-')}</strong></div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="p-3 rounded bg-light border h-100">
+                    <div class="fw-bold text-primary mb-2">2. Nilai Rapor, TKA &amp; Prestasi</div>
+                    <div>Rata-rata Rapor (SR): <strong>${escapeHtml(srDisplay)}</strong> (${(data.rapor || []).length} mapel tercatat)</div>
+                    <div>Nilai TKA (STKA): <strong>${escapeHtml(stkaDisplay)}</strong></div>
+                    <div>Skor Prestasi (SP): <strong>${escapeHtml(spDisplay)}</strong></div>
+                    <div>Skor Gabungan (SG): <strong>${escapeHtml(sgDisplay)}</strong></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            ${verificationFormHtml}
+          `;
+          updateWrongPartEvidenceBox();
+          return;
+        }
+
+        if (view === 'murid_praeligibel') {
+          if (!praAccess.allowed) {
+            document.getElementById('view-container').innerHTML = `
+              ${refreshBar}
+              <div class="card p-4 text-center border-warning">
+                <div class="mb-2"><i class="bi bi-calendar-x-fill text-warning" style="font-size: 3.5rem;"></i></div>
+                <h4 class="fw-bold mb-2">Pengumuman Pra-Eligibel Belum Dibuka / Sudah Ditutup</h4>
+                <p class="text-muted mb-2">${escapeHtml(praAccess.message || 'Pengumuman hasil pra-eligibel saat ini belum dibuka oleh Admin.')}</p>
+                ${wdData ? `
+                  <div class="alert alert-light border d-inline-block text-start mt-2 small">
+                    <div class="fw-bold mb-1">Riwayat Pengunduran Diri Anda:</div>
+                    <div>Status: <strong>${escapeHtml(wdData.status)}</strong></div>
+                    <div>Waktu Unggah: ${escapeHtml(wdData.waktu)}</div>
+                    ${wdData.linkSurat ? `<a href="${escapeHtml(wdData.linkSurat)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm mt-2"><i class="bi bi-file-earmark-arrow-down me-1"></i>Lihat Surat Pengunduran Diri</a>` : ''}
+                  </div>
+                ` : ''}
+              </div>`;
+            return;
+          }
+
+          const myPraLokal = praData ? praData.myLokal : null;
+          const isMyPraEligible = myPraLokal && String(myPraLokal.hasil || '').toLowerCase() === 'eligibel';
+          const draftList = praData && Array.isArray(praData.draftEligibleList) ? praData.draftEligibleList : [];
+          const uniqueKelompoks = Array.from(new Set(draftList.map(item => item.kelompok).filter(Boolean)));
+
+          let praBannerHtml = '';
+          if (!myPraLokal) {
+            praBannerHtml = `
+              <div class="alert alert-secondary text-center p-3">
+                <i class="bi bi-hourglass-split fs-2 d-block mb-1"></i>
+                <h5 class="fw-bold mb-1">Draft Pra-Eligibel Belum Tersedia</h5>
+                <p class="small mb-0">Pemeringkatan sementara belum dijalankan oleh Admin/Operator.</p>
+              </div>`;
+          } else if (isMyPraEligible) {
+            praBannerHtml = `
+              <div class="alert alert-info p-4">
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+                  <div>
+                    <span class="badge bg-primary mb-1">DRAFT PRA-ELIGIBEL</span>
+                    <h4 class="fw-bold mb-1">Anda Masuk dalam Draft Murid Eligibel</h4>
+                    <div class="small">Kelompok <strong>${escapeHtml(b.kelompok)}</strong> &middot; Peringkat Sementara: <strong>#${escapeHtml(myPraLokal.peringkat)}</strong> dari Kuota <strong>${escapeHtml(myPraLokal.kuota)}</strong></div>
+                  </div>
+                  <div class="small text-muted">
+                    Apabila Anda <strong>bersedia</strong> melanjutkan, tidak perlu mengunggah surat pengunduran diri.
+                  </div>
+                </div>
+              </div>`;
+          } else {
+            praBannerHtml = `
+              <div class="alert alert-secondary p-3">
+                <div class="fw-bold"><i class="bi bi-info-circle me-2"></i>Status Draft Anda: ${escapeHtml(myPraLokal.hasil || 'Tidak Eligibel')}</div>
+                <div class="small mt-1">Peringkat Lokal Sementara: <strong>${escapeHtml(myPraLokal.peringkat)}</strong> &middot; Status Kesediaan: <strong>${escapeHtml(myPraLokal.kesediaan)}</strong>. Anda tetap dapat melihat daftar draft murid eligibel di bawah ini.</div>
+              </div>`;
+          }
+
+          let withdrawalSectionHtml = '';
+          if (isMyPraEligible) {
+            const wdStatusHtml = wdData
+              ? `<div class="alert ${wdData.status.toLowerCase().includes('disetujui') ? 'alert-danger' : (wdData.status.toLowerCase().includes('ditolak') ? 'alert-secondary' : 'alert-warning')} small mb-3">
+                   <div class="fw-bold"><i class="bi bi-file-earmark-check me-1"></i>Status Pengajuan Pengunduran Diri: ${escapeHtml(wdData.status)}</div>
+                   <div>Waktu Unggah: ${escapeHtml(wdData.waktu)} &middot; File: <strong>${escapeHtml(wdData.namaFile)}</strong></div>
+                   <div>Alasan: ${escapeHtml(wdData.alasan)}</div>
+                   ${wdData.linkSurat ? `<a href="${escapeHtml(wdData.linkSurat)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-dark btn-sm mt-2"><i class="bi bi-box-arrow-up-right me-1"></i>Lihat Surat yang Diunggah</a>` : ''}
+                 </div>`
+              : '';
+
+            const isAlreadyApproved = wdData && wdData.status.toLowerCase().includes('disetujui');
+            withdrawalSectionHtml = `
+              <div class="card p-4 mb-4 border-start border-4 border-danger">
+                <h5 class="fw-bold text-danger mb-2"><i class="bi bi-file-earmark-x me-2"></i>Pengunduran Diri (Opsional)</h5>
+                <p class="small text-muted mb-3">
+                  Pada masa Pra-Eligibel ini, murid yang masuk dalam draft Eligibel diperkenankan mengundurkan diri apabila tidak bersedia mengikuti jalur SNBP dengan mengunduh, mengisi, menandatangani, lalu mengunggah <strong>Surat Pengunduran Diri</strong>.
+                  <br><em>Jika hingga batas waktu pra-eligibel tidak ada pengunduran diri, hasil eligibel final akan ditetapkan sesuai jadwal.</em>
+                </p>
+
+                <div class="mb-3">
+                  <a href="${WITHDRAWAL_TEMPLATE_URL}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm fw-semibold">
+                    <i class="bi bi-file-earmark-word me-1"></i> Unduh Format Surat Pengunduran Diri
+                  </a>
+                </div>
+
+                ${wdStatusHtml}
+
+                ${!isAlreadyApproved ? `
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label for="wd-file-input" class="form-label small fw-bold">Upload Surat Pengunduran Diri (PDF / JPG / PNG / DOCX, maks. 4 MB)</label>
+                      <input type="file" id="wd-file-input" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
+                    </div>
+                    <div class="col-md-6">
+                      <label for="wd-reason-input" class="form-label small fw-bold">Alasan Pengunduran Diri (Opsional)</label>
+                      <input type="text" id="wd-reason-input" class="form-control form-control-sm" placeholder="Contoh: Fokus jalur UTBK-SNBT / Kedinasan" value="${escapeHtml(wdData && wdData.alasan !== '-' ? wdData.alasan : '')}">
+                    </div>
+                  </div>
+                  <div class="mt-3">
+                    <button type="button" class="btn btn-danger btn-sm fw-bold px-4" onclick="handleStudentWithdrawalSubmit()">
+                      <i class="bi bi-cloud-upload me-2"></i>${wdData ? 'UNGGAH ULANG SURAT PENGUNDURAN DIRI' : 'AJUKAN PENGUNDURAN DIRI'}
+                    </button>
+                  </div>
+                ` : ''}
+              </div>`;
+          }
+
+          const draftRowsHtml = draftList.map((item, idx) => {
+            const isMe = item.nis === b.nis;
+            return `
+              <tr data-kelompok="${escapeHtml(item.kelompok)}" class="${isMe ? 'table-primary fw-bold' : ''}">
+                <td class="text-center">${idx + 1}</td>
+                <td class="text-center">${escapeHtml(item.nis)}</td>
+                <td>${escapeHtml(item.nama)}${isMe ? ' <span class="badge bg-primary ms-1">Anda</span>' : ''}</td>
+                <td class="text-center">${escapeHtml(item.kelas)}</td>
+                <td class="text-center">${escapeHtml(item.kelompok)}</td>
+                <td class="text-center">${escapeHtml(item.peringkat)}</td>
+                <td class="text-center"><span class="badge bg-info text-dark">Draft Eligibel</span></td>
+              </tr>`;
+          }).join('');
+
+          document.getElementById('view-container').innerHTML = `
+            ${refreshBar}
+            ${praBannerHtml}
+            ${withdrawalSectionHtml}
+            <div class="card p-3">
+              <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3 gap-2">
+                <div>
+                  <h5 class="fw-bold mb-0"><i class="bi bi-people me-2 text-primary"></i>Daftar Draft Murid Pra-Eligibel</h5>
+                  <small class="text-muted">Total sementara: <strong>${draftList.length}</strong> murid eligibel (dapat berubah jika ada pengunduran diri).</small>
+                </div>
+                <div class="d-flex gap-2 align-items-center">
+                  <label for="pra-filter-kelompok" class="small text-muted mb-0">Kelompok:</label>
+                  <select id="pra-filter-kelompok" class="form-select form-select-sm" style="width: auto;" onchange="filterPreEligibleTable()">
+                    <option value="">Semua Kelompok</option>
+                    ${uniqueKelompoks.map(k => `<option value="${escapeHtml(k)}" ${k === b.kelompok ? 'selected' : ''}>${escapeHtml(k)}</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table id="pra-draft-table" class="table table-bordered table-sm table-hover align-middle" style="font-size: 0.84rem;">
+                  <thead class="table-light">
+                    <tr>
+                      <th class="text-center">No</th>
+                      <th class="text-center">NIS</th>
+                      <th>Nama Siswa</th>
+                      <th class="text-center">Kelas</th>
+                      <th class="text-center">Kelompok</th>
+                      <th class="text-center">Peringkat Lokal</th>
+                      <th class="text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${draftRowsHtml || '<tr><td colspan="7" class="text-center text-muted py-4">Belum ada data draft pra-eligibel.</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>`;
+          filterPreEligibleTable();
           return;
         }
 
@@ -725,10 +1124,10 @@
               ${refreshBar}
               <div class="card p-4 text-center border-warning">
                 <div class="mb-2"><i class="bi bi-calendar-x-fill text-warning" style="font-size: 3.5rem;"></i></div>
-                <h4 class="fw-bold mb-2">Pengumuman Hasil Eligibel Belum Dibuka</h4>
-                <p class="text-muted mb-3">${escapeHtml(annAccess.message || 'Pengumuman hasil seleksi eligibel saat ini sedang ditutup oleh Admin.')}</p>
+                <h4 class="fw-bold mb-2">Pengumuman Hasil Eligibel Final Belum Dibuka</h4>
+                <p class="text-muted mb-3">${escapeHtml(annAccess.message || 'Pengumuman hasil seleksi eligibel final saat ini sedang ditutup oleh Admin.')}</p>
                 <div class="small text-muted">
-                  Anda tetap dapat memeriksa data <strong>Rekap Nilai Rapor</strong> dan <strong>Nilai TKA &amp; Prestasi</strong> selama portal murid dibuka.
+                  Anda tetap dapat memeriksa data <strong>Rekap Nilai Rapor</strong>, <strong>Nilai TKA &amp; Prestasi</strong>, <strong>Verifikasi Data</strong>, dan <strong>Pra-Eligibel</strong> sesuai jadwal yang dibuka.
                 </div>
               </div>`;
             return;
@@ -762,7 +1161,7 @@
             ${refreshBar}
             <div class="card p-4">
               <div class="text-center mb-3">
-                <h5 class="fw-bold mb-1">Hasil Seleksi E-Eligible Individu</h5>
+                <h5 class="fw-bold mb-1">Hasil Seleksi E-Eligible Final</h5>
                 <div class="text-muted">${escapeHtml(b.nama)} &middot; NIS ${escapeHtml(b.nis)} &middot; Kelas ${escapeHtml(b.kelas)} &middot; Kelompok ${escapeHtml(b.kelompok)}</div>
               </div>
               ${bannerHtml}
@@ -836,13 +1235,507 @@
     }
 
     // =========================================================================
-    // FITUR GANTI PASSWORD (MURID & OPERATOR) & LUPA PASSWORD / RESET (ADMIN)
+    // AKSI VERIFIKASI DATA & PENGUNDURAN DIRI (MURID)
     // =========================================================================
 
-    function openForgotPasswordModal(prefillUsername = '') {
-      const inputEl = document.getElementById('forgot-username');
-      if (inputEl) {
-        inputEl.value = prefillUsername || (document.getElementById('username')?.value || '').trim();
+    function updateWrongPartEvidenceBox() {
+      const box = document.getElementById('ver-evidence-guide-box');
+      if (!box) return;
+      const checked = Array.from(document.querySelectorAll('.ver-wrong-cb:checked')).map(el => el.value);
+      if (checked.length === 0) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+      }
+      box.style.display = 'block';
+      box.innerHTML = `
+        <div class="fw-bold text-danger mb-1"><i class="bi bi-folder-check me-1"></i>Dokumen Bukti Wajib Ditunjukkan ke Operator:</div>
+        <ul class="mb-0 ps-3">
+          ${checked.map(part => `<li><strong>${escapeHtml(part)}</strong>: ${escapeHtml(EVIDENCE_GUIDE[part] || 'Dokumen pendukung asli')}</li>`).join('')}
+        </ul>`;
+    }
+
+    function handleStudentConfirmAllCorrect() {
+      openActionConfirmModal(
+        'Konfirmasi Semua Data Benar',
+        'Apakah Anda sudah memeriksa <strong>Biodata, Nilai Rapor (Sem 1–5), Nilai TKA, dan Skor Prestasi</strong> Anda dan memastikan seluruhnya sudah benar?',
+        'Ya, Semua Data Benar',
+        'btn-success',
+        () => {
+          showLoading(true);
+          google.script.run
+            .withSuccessHandler(res => {
+              showLoading(false);
+              if (res && res.success) {
+                studentPortalCache = null;
+                notify(true, 'Verifikasi Berhasil', res.message || 'Data Anda telah dikonfirmasi sudah benar.');
+                renderStudentView('murid_verifikasi', true);
+              } else {
+                notify(false, 'Verifikasi Gagal', res?.message || 'Gagal menyimpan verifikasi.');
+              }
+            })
+            .withFailureHandler(() => {
+              showLoading(false);
+              notify(false, 'Koneksi Gagal', 'Tidak dapat terhubung ke server.');
+            })
+            .submitStudentVerification(user.nis, true, [], '');
+        }
+      );
+    }
+
+    function handleStudentReportError() {
+      const checked = Array.from(document.querySelectorAll('.ver-wrong-cb:checked')).map(el => el.value);
+      const notes = (document.getElementById('ver-notes-input')?.value || '').trim();
+      if (checked.length === 0) {
+        return notify(false, 'Pilih Bagian yang Salah', 'Centang minimal satu bagian data yang salah (Biodata, Nilai Rapor, Nilai TKA, atau Skor Prestasi).');
+      }
+
+      const buktiListHtml = checked.map(p => `<li><strong>${escapeHtml(p)}</strong> &rarr; ${escapeHtml(EVIDENCE_GUIDE[p] || '')}</li>`).join('');
+      openActionConfirmModal(
+        'Kirim Laporan Kesalahan Data',
+        `Anda melaporkan kesalahan pada: <strong>${escapeHtml(checked.join(', '))}</strong>.<br><br>Setelah mengirim laporan, harap segera menghubungi Operator sekolah dengan menunjukkan:<ul class="mt-2 mb-0 ps-3">${buktiListHtml}</ul>`,
+        'Kirim Laporan',
+        'btn-danger',
+        () => {
+          showLoading(true);
+          google.script.run
+            .withSuccessHandler(res => {
+              showLoading(false);
+              if (res && res.success) {
+                studentPortalCache = null;
+                notify(true, 'Laporan Terkirim', res.message || 'Laporan kesalahan data berhasil disimpan.');
+                renderStudentView('murid_verifikasi', true);
+              } else {
+                notify(false, 'Gagal Mengirim', res?.message || 'Gagal menyimpan laporan kesalahan.');
+              }
+            })
+            .withFailureHandler(() => {
+              showLoading(false);
+              notify(false, 'Koneksi Gagal', 'Tidak dapat terhubung ke server.');
+            })
+            .submitStudentVerification(user.nis, false, checked, notes);
+        }
+      );
+    }
+
+    function filterPreEligibleTable() {
+      const sel = document.getElementById('pra-filter-kelompok');
+      const table = document.getElementById('pra-draft-table');
+      if (!sel || !table) return;
+      const val = sel.value;
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      rows.forEach(tr => {
+        const kel = tr.getAttribute('data-kelompok');
+        if (!kel) return;
+        tr.style.display = (!val || kel === val) ? '' : 'none';
+      });
+    }
+
+    function handleStudentWithdrawalSubmit() {
+      const fileInput = document.getElementById('wd-file-input');
+      const reason = (document.getElementById('wd-reason-input')?.value || '').trim();
+      const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+
+      if (!file) {
+        return notify(false, 'File Belum Dipilih', 'Silakan pilih file Surat Pengunduran Diri yang sudah diisi dan ditandatangani terlebih dahulu.');
+      }
+      if (file.size > 4 * 1024 * 1024) {
+        return notify(false, 'Ukuran File Terlalu Besar', 'Maksimal ukuran file adalah 4 MB. Silakan kompres file Anda terlebih dahulu.');
+      }
+
+      openActionConfirmModal(
+        'Konfirmasi Pengunduran Diri',
+        `Anda akan mengunggah file <strong>${escapeHtml(file.name)}</strong> untuk mengajukan pengunduran diri dari daftar Eligibel.<br><br>Setelah disetujui Admin/Operator, status kesediaan Anda akan berubah menjadi <strong>Tidak Bersedia</strong> dan tidak diikutkan pada hasil Eligibel Final.`,
+        'Ya, Upload & Ajukan',
+        'btn-danger',
+        () => {
+          showLoading(true);
+          const reader = new FileReader();
+          reader.onload = function(evt) {
+            try {
+              const dataUrl = String(evt.target.result || '');
+              const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+              google.script.run
+                .withSuccessHandler(res => {
+                  showLoading(false);
+                  if (res && res.success) {
+                    studentPortalCache = null;
+                    notify(true, 'Berhasil Diunggah', res.message || 'Surat pengunduran diri berhasil diunggah.');
+                    renderStudentView('murid_praeligibel', true);
+                  } else {
+                    notify(false, 'Gagal Mengunggah', res?.message || 'Gagal mengunggah surat pengunduran diri.');
+                  }
+                })
+                .withFailureHandler(() => {
+                  showLoading(false);
+                  notify(false, 'Koneksi Gagal', 'Terjadi kesalahan koneksi saat mengunggah surat pengunduran diri.');
+                })
+                .submitStudentWithdrawal(user.nis, reason, file.name, file.type || 'application/octet-stream', base64Data);
+            } catch (err) {
+              showLoading(false);
+              notify(false, 'Gagal Membaca File', err.message);
+            }
+          };
+          reader.onerror = function() {
+            showLoading(false);
+            notify(false, 'Gagal Membaca File', 'File tidak dapat dibaca oleh browser.');
+          };
+          reader.readAsDataURL(file);
+        }
+      );
+    }
+
+    // =========================================================================
+    // MONITORING VERIFIKASI & PENGUNDURAN DIRI (ADMIN & OPERATOR)
+    // =========================================================================
+
+    function renderVerificationMonitorPage() {
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (!res || !res.success) {
+            return notify(false, 'Gagal Memuat', res?.message || 'Gagal memuat daftar verifikasi murid.');
+          }
+
+          verificationMonitorItems = res.items || [];
+          const sum = res.summary || { totalSiswa: 0, sudahBenar: 0, perluPerbaikan: 0, sudahDiperbaiki: 0, belumVerifikasi: 0 };
+
+          const rowsHtml = verificationMonitorItems.map((item, idx) => {
+            let statusBadge = '<span class="badge bg-secondary">Belum Verifikasi</span>';
+            if (item.status === 'Semua Data Sudah Benar') statusBadge = '<span class="badge bg-success">Sudah Benar</span>';
+            else if (item.status === 'Perlu Perbaikan') statusBadge = '<span class="badge bg-danger">Perlu Perbaikan</span>';
+
+            let tindakBadge = '<span class="text-muted">-</span>';
+            if (item.status === 'Perlu Perbaikan') {
+              tindakBadge = item.tindakLanjut === 'Sudah Diperbaiki'
+                ? '<span class="badge bg-success">Sudah Diperbaiki</span>'
+                : '<span class="badge bg-warning text-dark">Menunggu Operator</span>';
+            } else if (item.status === 'Semua Data Sudah Benar') {
+              tindakBadge = '<span class="badge bg-light text-dark border">Selesai</span>';
+            }
+
+            const wrongList = item.bagianSalah && item.bagianSalah !== '-'
+              ? item.bagianSalah.split(',').map(x => x.trim())
+              : [];
+            const buktiText = wrongList.length > 0
+              ? wrongList.map(p => EVIDENCE_GUIDE[p] || p).join('; ')
+              : '-';
+
+            const actionBtn = item.status === 'Perlu Perbaikan'
+              ? (item.tindakLanjut === 'Sudah Diperbaiki'
+                  ? `<button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" data-nis="${escapeHtml(item.nis)}" data-status="Menunggu Operator" onclick="handleUpdateVerificationFollowUp(this)">Buka Lagi</button>`
+                  : `<button type="button" class="btn btn-success btn-sm py-0 px-2 fw-semibold" data-nis="${escapeHtml(item.nis)}" data-status="Sudah Diperbaiki" onclick="handleUpdateVerificationFollowUp(this)"><i class="bi bi-check-lg me-1"></i>Tandai Diperbaiki</button>`)
+              : '<span class="text-muted small">-</span>';
+
+            return `
+              <tr data-status="${escapeHtml(item.status)}" data-search="${escapeHtml((item.nis + ' ' + item.nama + ' ' + item.kelas + ' ' + item.kelompok).toLowerCase())}">
+                <td class="text-center">${idx + 1}</td>
+                <td class="text-center">${escapeHtml(item.nis)}</td>
+                <td>${escapeHtml(item.nama)}</td>
+                <td class="text-center">${escapeHtml(item.kelas)}</td>
+                <td class="text-center">${escapeHtml(item.kelompok)}</td>
+                <td class="text-center">${statusBadge}</td>
+                <td>${escapeHtml(item.bagianSalah)}</td>
+                <td class="small">${escapeHtml(buktiText)}</td>
+                <td class="small">${escapeHtml(item.catatan)}</td>
+                <td class="text-center small">${escapeHtml(item.waktu)}</td>
+                <td class="text-center">${tindakBadge}</td>
+                <td class="text-center">${actionBtn}</td>
+              </tr>`;
+          }).join('');
+
+          document.getElementById('view-container').innerHTML = `
+            <div class="row g-3 mb-4">
+              <div class="col-6 col-md-3">
+                <div class="card p-3 text-center">
+                  <small class="text-muted">Total Murid</small>
+                  <h3 class="fw-bold text-primary mb-0">${sum.totalSiswa}</h3>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="card p-3 text-center">
+                  <small class="text-muted">Sudah Benar</small>
+                  <h3 class="fw-bold text-success mb-0">${sum.sudahBenar}</h3>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="card p-3 text-center">
+                  <small class="text-muted">Perlu Perbaikan</small>
+                  <h3 class="fw-bold text-danger mb-0">${sum.perluPerbaikan}</h3>
+                  <small class="text-muted">Diperbaiki: ${sum.sudahDiperbaiki}</small>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="card p-3 text-center">
+                  <small class="text-muted">Belum Verifikasi</small>
+                  <h3 class="fw-bold text-secondary mb-0">${sum.belumVerifikasi}</h3>
+                </div>
+              </div>
+            </div>
+
+            <div class="card p-3">
+              <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3 gap-2">
+                <h5 class="fw-bold mb-0">Daftar Verifikasi Data Murid</h5>
+                <div class="d-flex gap-2 flex-wrap">
+                  <select id="ver-mon-status" class="form-select form-select-sm" style="width: auto;" onchange="filterVerificationMonitorTable()">
+                    <option value="">Semua Status</option>
+                    <option value="Perlu Perbaikan">Perlu Perbaikan</option>
+                    <option value="Semua Data Sudah Benar">Semua Data Sudah Benar</option>
+                    <option value="Belum Verifikasi">Belum Verifikasi</option>
+                  </select>
+                  <input type="text" id="ver-mon-search" class="form-control form-control-sm" style="width: 190px;" placeholder="Cari NIS / Nama..." oninput="filterVerificationMonitorTable()">
+                  <button class="btn btn-outline-dark btn-sm" onclick="exportToExcel('verifikasimurid')"><i class="bi bi-file-earmark-spreadsheet me-1"></i>EXPORT</button>
+                  <button class="btn btn-outline-primary btn-sm" onclick="renderVerificationMonitorPage()"><i class="bi bi-arrow-clockwise"></i></button>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table id="report-table" class="table table-bordered table-sm table-hover align-middle" style="font-size: 0.8rem;">
+                  <thead class="table-light">
+                    <tr>
+                      <th class="text-center">No</th>
+                      <th class="text-center">NIS</th>
+                      <th>Nama Siswa</th>
+                      <th class="text-center">Kelas</th>
+                      <th class="text-center">Kelompok</th>
+                      <th class="text-center">Status Verifikasi</th>
+                      <th>Bagian Salah</th>
+                      <th>Bukti Wajib Ditunjukkan</th>
+                      <th>Catatan Murid</th>
+                      <th class="text-center">Waktu</th>
+                      <th class="text-center">Tindak Lanjut</th>
+                      <th class="text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ver-mon-tbody">
+                    ${rowsHtml || '<tr><td colspan="12" class="text-center text-muted py-4">Belum ada data siswa.</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>`;
+        })
+        .withFailureHandler(() => {
+          showLoading(false);
+          notify(false, 'Koneksi Gagal', 'Tidak dapat mengambil data verifikasi murid.');
+        })
+        .getVerificationList();
+    }
+
+    function filterVerificationMonitorTable() {
+      const statusVal = document.getElementById('ver-mon-status')?.value || '';
+      const q = (document.getElementById('ver-mon-search')?.value || '').trim().toLowerCase();
+      const rows = Array.from(document.querySelectorAll('#ver-mon-tbody tr'));
+      rows.forEach(tr => {
+        const st = tr.getAttribute('data-status') || '';
+        const text = tr.getAttribute('data-search') || '';
+        const matchStatus = !statusVal || st === statusVal;
+        const matchQuery = !q || text.includes(q);
+        tr.style.display = (matchStatus && matchQuery) ? '' : 'none';
+      });
+    }
+
+    function handleUpdateVerificationFollowUp(btn) {
+      const nis = btn.dataset.nis || '';
+      const status = btn.dataset.status || 'Sudah Diperbaiki';
+      if (!nis) return;
+
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (res && res.success) {
+            notify(true, 'Berhasil Diperbarui', res.message);
+            renderVerificationMonitorPage();
+          } else {
+            notify(false, 'Gagal', res?.message || 'Tidak dapat memperbarui status tindak lanjut.');
+          }
+        })
+        .withFailureHandler(() => {
+          showLoading(false);
+          notify(false, 'Koneksi Gagal', 'Terjadi kesalahan saat menghubungi server.');
+        })
+        .updateVerificationFollowUp(nis, status);
+    }
+
+    function renderWithdrawalMonitorPage() {
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (!res || !res.success) {
+            return notify(false, 'Gagal Memuat', res?.message || 'Gagal memuat daftar pengunduran diri.');
+          }
+
+          const items = res.items || [];
+          const sum = res.summary || { total: 0, menunggu: 0, disetujui: 0, ditolak: 0 };
+
+          const readinessAlert = sum.total === 0
+            ? `<div class="alert alert-success small mb-3"><i class="bi bi-check-circle-fill me-2"></i>Belum ada murid yang mengajukan pengunduran diri. Apabila batas waktu Pra-Eligibel telah berakhir tanpa pengunduran diri, Anda dapat langsung mengumumkan <strong>Hasil Eligibel Final</strong> sesuai jadwal.</div>`
+            : (sum.menunggu > 0
+                ? `<div class="alert alert-warning small mb-3"><i class="bi bi-exclamation-triangle-fill me-2"></i>Terdapat <strong>${sum.menunggu}</strong> pengajuan pengunduran diri yang menunggu verifikasi. Periksa surat pengunduran diri sebelum menyetujui.</div>`
+                : `<div class="alert alert-info small mb-3"><i class="bi bi-info-circle-fill me-2"></i>Semua pengajuan pengunduran diri telah diproses (${sum.disetujui} disetujui). Pastikan Anda menekan tombol <strong>GENERATE RANKING</strong> agar perubahan status kesediaan tercermin pada <strong>Hasil Eligibel Final</strong>.</div>`);
+
+          const rowsHtml = items.map((item, idx) => {
+            const isApproved = item.status.toLowerCase().includes('disetujui');
+            const isRejected = item.status.toLowerCase().includes('ditolak');
+            const badgeClass = isApproved ? 'bg-danger' : (isRejected ? 'bg-secondary' : 'bg-warning text-dark');
+
+            const actionHtml = !isApproved
+              ? `<div class="d-flex justify-content-center gap-1 flex-wrap">
+                   <button type="button" class="btn btn-danger btn-sm py-0 px-2 fw-semibold"
+                     data-nis="${escapeHtml(item.nis)}"
+                     data-nama="${escapeHtml(item.nama)}"
+                     data-action="SETUJUI"
+                     onclick="handleProcessWithdrawal(this)">
+                     <i class="bi bi-check-lg me-1"></i>Setujui
+                   </button>
+                   ${!isRejected ? `
+                     <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2"
+                       data-nis="${escapeHtml(item.nis)}"
+                       data-nama="${escapeHtml(item.nama)}"
+                       data-action="TOLAK"
+                       onclick="handleProcessWithdrawal(this)">
+                       Tolak
+                     </button>` : ''}
+                 </div>`
+              : '<span class="text-muted small">Selesai</span>';
+
+            return `
+              <tr>
+                <td class="text-center">${idx + 1}</td>
+                <td class="text-center small">${escapeHtml(item.waktu)}</td>
+                <td class="text-center fw-semibold">${escapeHtml(item.nis)}</td>
+                <td>${escapeHtml(item.nama)}</td>
+                <td class="text-center">${escapeHtml(item.kelas)}</td>
+                <td class="text-center">${escapeHtml(item.kelompok)}</td>
+                <td class="small">${escapeHtml(item.alasan)}</td>
+                <td class="text-center">
+                  ${item.linkSurat
+                    ? `<a href="${escapeHtml(item.linkSurat)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm py-0 px-2"><i class="bi bi-file-earmark-text me-1"></i>Lihat Surat</a>`
+                    : '-'}
+                </td>
+                <td class="text-center"><span class="badge ${badgeClass}">${escapeHtml(item.status)}</span></td>
+                <td class="text-center">${actionHtml}</td>
+              </tr>`;
+          }).join('');
+
+          document.getElementById('view-container').innerHTML = `
+            <div class="row g-3 mb-4">
+              <div class="col-6 col-md-3">
+                <div class="card p-3 text-center">
+                  <small class="text-muted">Total Pengajuan</small>
+                  <h3 class="fw-bold text-primary mb-0">${sum.total}</h3>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="card p-3 text-center">
+                  <small class="text-muted">Menunggu Verifikasi</small>
+                  <h3 class="fw-bold text-warning mb-0">${sum.menunggu}</h3>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="card p-3 text-center">
+                  <small class="text-muted">Disetujui</small>
+                  <h3 class="fw-bold text-danger mb-0">${sum.disetujui}</h3>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="card p-3 text-center">
+                  <small class="text-muted">Ditolak</small>
+                  <h3 class="fw-bold text-secondary mb-0">${sum.ditolak}</h3>
+                </div>
+              </div>
+            </div>
+
+            ${readinessAlert}
+
+            <div class="card p-3">
+              <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3 gap-2">
+                <h5 class="fw-bold mb-0">Daftar Pengajuan Pengunduran Diri (Pra-Eligibel)</h5>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button class="btn btn-warning btn-sm fw-bold" onclick="runRanking()"><i class="bi bi-arrow-repeat me-1"></i>GENERATE RANKING</button>
+                  <button class="btn btn-outline-dark btn-sm" onclick="exportToExcel('pengundurandiri')"><i class="bi bi-file-earmark-spreadsheet me-1"></i>EXPORT</button>
+                  <button class="btn btn-outline-primary btn-sm" onclick="renderWithdrawalMonitorPage()"><i class="bi bi-arrow-clockwise"></i></button>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table id="report-table" class="table table-bordered table-sm table-hover align-middle" style="font-size: 0.82rem;">
+                  <thead class="table-light">
+                    <tr>
+                      <th class="text-center">No</th>
+                      <th class="text-center">Waktu</th>
+                      <th class="text-center">NIS</th>
+                      <th>Nama Siswa</th>
+                      <th class="text-center">Kelas</th>
+                      <th class="text-center">Kelompok</th>
+                      <th>Alasan</th>
+                      <th class="text-center">Surat</th>
+                      <th class="text-center">Status</th>
+                      <th class="text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rowsHtml || '<tr><td colspan="10" class="text-center text-muted py-4">Belum ada murid yang mengajukan pengunduran diri.</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>`;
+        })
+        .withFailureHandler(() => {
+          showLoading(false);
+          notify(false, 'Koneksi Gagal', 'Tidak dapat memuat daftar pengunduran diri.');
+        })
+        .getWithdrawalList();
+    }
+
+    function handleProcessWithdrawal(btn) {
+      const nis = btn.dataset.nis || '';
+      const nama = btn.dataset.nama || nis;
+      const action = btn.dataset.action || '';
+      if (!nis || !action) return;
+
+      const isApprove = action === 'SETUJUI';
+      openActionConfirmModal(
+        isApprove ? 'Setujui Pengunduran Diri' : 'Tolak Pengunduran Diri',
+        isApprove
+          ? `Setujui pengunduran diri atas nama <strong>${escapeHtml(nama)}</strong> (NIS: ${escapeHtml(nis)})?<br><br>Status Kesediaan murid pada data siswa akan otomatis diubah menjadi <strong>Tidak Bersedia</strong>.`
+          : `Tolak pengajuan pengunduran diri atas nama <strong>${escapeHtml(nama)}</strong> (NIS: ${escapeHtml(nis)})?`,
+        isApprove ? 'Ya, Setujui' : 'Ya, Tolak',
+        isApprove ? 'btn-danger' : 'btn-secondary',
+        () => {
+          showLoading(true);
+          google.script.run
+            .withSuccessHandler(res => {
+              showLoading(false);
+              if (res && res.success) {
+                notify(true, 'Berhasil Diproses', res.message);
+                renderWithdrawalMonitorPage();
+              } else {
+                notify(false, 'Gagal Memproses', res?.message || 'Terjadi kesalahan saat memproses pengunduran diri.');
+              }
+            })
+            .withFailureHandler(() => {
+              showLoading(false);
+              notify(false, 'Koneksi Gagal', 'Tidak dapat terhubung ke server.');
+            })
+            .processWithdrawalRequest(nis, action);
+        }
+      );
+    }
+
+    function escapeHtml(value) {
+      return String(value === null || value === undefined ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function openForgotPasswordModal(prefillUser = '') {
+      const input = document.getElementById('forgot-username');
+      if (input) {
+        input.value = prefillUser || (document.getElementById('username')?.value || '').trim();
       }
       forgotPasswordModal.show();
     }
@@ -1090,6 +1983,10 @@
 
           const cfg = res.config || { mode: 'OTOMATIS', startDate: '', endDate: '', message: '' };
           const st = res.status || { allowed: true, label: 'TERBUKA', message: '' };
+          const verCfg = res.verificationConfig || { mode: 'OTOMATIS', startDate: '', endDate: '', message: '' };
+          const verSt = res.verificationStatus || { allowed: true, label: 'TERBUKA', message: '' };
+          const praCfg = res.preEligibleConfig || { mode: 'OTOMATIS', startDate: '', endDate: '', message: '' };
+          const praSt = res.preEligibleStatus || { allowed: true, label: 'TERBUKA', message: '' };
           const annCfg = res.announcementConfig || { mode: 'OTOMATIS', startDate: '', endDate: '', message: '' };
           const annSt = res.announcementStatus || { allowed: true, label: 'TERBUKA', message: '' };
           const serverTime = res.serverTime || '-';
@@ -1097,6 +1994,14 @@
           const badgeClass = st.allowed ? 'bg-success' : 'bg-danger';
           const alertClass = st.allowed ? 'alert-success' : 'alert-danger';
           const statusIcon = st.allowed ? 'bi-unlock-fill' : 'bi-lock-fill';
+
+          const verBadgeClass = verSt.allowed ? 'bg-success' : 'bg-danger';
+          const verAlertClass = verSt.allowed ? 'alert-success' : 'alert-danger';
+          const verStatusIcon = verSt.allowed ? 'bi-clipboard-check-fill' : 'bi-lock-fill';
+
+          const praBadgeClass = praSt.allowed ? 'bg-success' : 'bg-danger';
+          const praAlertClass = praSt.allowed ? 'alert-success' : 'alert-danger';
+          const praStatusIcon = praSt.allowed ? 'bi-file-earmark-check-fill' : 'bi-lock-fill';
 
           const annBadgeClass = annSt.allowed ? 'bg-success' : 'bg-danger';
           const annAlertClass = annSt.allowed ? 'alert-success' : 'alert-danger';
@@ -1159,7 +2064,7 @@
 
                   <div class="mb-3">
                     <label for="akses-message" class="form-label fw-bold small">Pesan Saat Portal Murid Ditutup</label>
-                    <textarea id="akses-message" class="form-control form-control-sm" rows="3" placeholder="Contoh: Akses portal murid sedang ditutup.">${escapeHtml(cfg.message)}</textarea>
+                    <textarea id="akses-message" class="form-control form-control-sm" rows="2" placeholder="Contoh: Akses portal murid sedang ditutup.">${escapeHtml(cfg.message)}</textarea>
                   </div>
 
                   <div class="mt-auto d-flex justify-content-end">
@@ -1170,11 +2075,125 @@
                 </div>
               </div>
 
-              <!-- KARTU 2: AKSES PENGUMUMAN ELIGIBEL -->
+              <!-- KARTU 2: AKSES MASA VERIFIKASI DATA MURID -->
               <div class="col-lg-6">
                 <div class="card p-4 h-100">
                   <h5 class="fw-bold mb-3 pb-2 border-bottom">
-                    <i class="bi bi-patch-check me-2 text-success"></i>2. Akses Khusus Pengumuman Eligibel
+                    <i class="bi bi-clipboard-check me-2 text-info"></i>2. Akses Masa Verifikasi Data Murid
+                  </h5>
+
+                  <div class="alert ${verAlertClass} py-2 px-3 mb-3">
+                    <div class="fw-bold">
+                      <i class="bi ${verStatusIcon} me-1"></i>Status:
+                      <span class="badge ${verBadgeClass} ms-1">${escapeHtml(verSt.label)}</span>
+                    </div>
+                    <div class="small mt-1">${escapeHtml(verSt.message)}</div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label for="verifikasi-mode" class="form-label fw-bold small">Mode Masa Verifikasi Data</label>
+                    <select id="verifikasi-mode" class="form-select" onchange="updateVerificationAccessModeUI()">
+                      <option value="OTOMATIS" ${verCfg.mode === 'OTOMATIS' ? 'selected' : ''}>Otomatis Berbasis Tanggal (Ikuti Jadwal)</option>
+                      <option value="BUKA" ${verCfg.mode === 'BUKA' ? 'selected' : ''}>Buka Verifikasi Manual (Selalu Terbuka)</option>
+                      <option value="TUTUP" ${verCfg.mode === 'TUTUP' ? 'selected' : ''}>Tutup Verifikasi Manual (Selalu Tertutup)</option>
+                    </select>
+                  </div>
+
+                  <div id="verifikasi-schedule-box" class="p-3 rounded border bg-light mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <span class="fw-bold small text-info"><i class="bi bi-calendar-range me-1"></i>Interval Waktu Verifikasi Murid</span>
+                      <button type="button" class="btn btn-link btn-sm text-decoration-none p-0" onclick="clearVerificationAccessDates()">
+                        <i class="bi bi-x-circle me-1"></i>Kosongkan
+                      </button>
+                    </div>
+                    <div class="row g-2">
+                      <div class="col-md-6">
+                        <label for="verifikasi-start" class="form-label small fw-semibold">Tanggal &amp; Jam Buka</label>
+                        <input type="datetime-local" id="verifikasi-start" class="form-control form-control-sm" value="${escapeHtml(verCfg.startDate)}">
+                      </div>
+                      <div class="col-md-6">
+                        <label for="verifikasi-end" class="form-label small fw-semibold">Tanggal &amp; Jam Tutup</label>
+                        <input type="datetime-local" id="verifikasi-end" class="form-control form-control-sm" value="${escapeHtml(verCfg.endDate)}">
+                      </div>
+                    </div>
+                    <div id="verifikasi-mode-hint" class="form-text mt-2"></div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label for="verifikasi-message" class="form-label fw-bold small">Pesan Saat Masa Verifikasi Ditutup</label>
+                    <textarea id="verifikasi-message" class="form-control form-control-sm" rows="2" placeholder="Contoh: Masa verifikasi data telah berakhir.">${escapeHtml(verCfg.message)}</textarea>
+                  </div>
+
+                  <div class="mt-auto d-flex justify-content-end">
+                    <button type="button" class="btn btn-info text-dark fw-bold px-4" onclick="saveVerificationAccessSettings()">
+                      <i class="bi bi-cloud-arrow-up me-2"></i>SIMPAN VERIFIKASI
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- KARTU 3: AKSES PENGUMUMAN PRA-ELIGIBEL & PENGUNDURAN DIRI -->
+              <div class="col-lg-6">
+                <div class="card p-4 h-100">
+                  <h5 class="fw-bold mb-3 pb-2 border-bottom">
+                    <i class="bi bi-file-earmark-check me-2 text-warning"></i>3. Pengumuman Pra-Eligibel &amp; Pengunduran Diri
+                  </h5>
+
+                  <div class="alert ${praAlertClass} py-2 px-3 mb-3">
+                    <div class="fw-bold">
+                      <i class="bi ${praStatusIcon} me-1"></i>Status:
+                      <span class="badge ${praBadgeClass} ms-1">${escapeHtml(praSt.label)}</span>
+                    </div>
+                    <div class="small mt-1">${escapeHtml(praSt.message)}</div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label for="praeligibel-mode" class="form-label fw-bold small">Mode Pra-Eligibel &amp; Pengunduran Diri</label>
+                    <select id="praeligibel-mode" class="form-select" onchange="updatePreEligibleAccessModeUI()">
+                      <option value="OTOMATIS" ${praCfg.mode === 'OTOMATIS' ? 'selected' : ''}>Otomatis Berbasis Tanggal (Ikuti Jadwal)</option>
+                      <option value="BUKA" ${praCfg.mode === 'BUKA' ? 'selected' : ''}>Buka Pra-Eligibel Manual (Selalu Terbuka)</option>
+                      <option value="TUTUP" ${praCfg.mode === 'TUTUP' ? 'selected' : ''}>Tutup Pra-Eligibel Manual (Selalu Tertutup)</option>
+                    </select>
+                  </div>
+
+                  <div id="praeligibel-schedule-box" class="p-3 rounded border bg-light mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <span class="fw-bold small text-warning text-dark"><i class="bi bi-calendar2-week me-1"></i>Interval Waktu Pra-Eligibel</span>
+                      <button type="button" class="btn btn-link btn-sm text-decoration-none p-0" onclick="clearPreEligibleAccessDates()">
+                        <i class="bi bi-x-circle me-1"></i>Kosongkan
+                      </button>
+                    </div>
+                    <div class="row g-2">
+                      <div class="col-md-6">
+                        <label for="praeligibel-start" class="form-label small fw-semibold">Tanggal &amp; Jam Buka</label>
+                        <input type="datetime-local" id="praeligibel-start" class="form-control form-control-sm" value="${escapeHtml(praCfg.startDate)}">
+                      </div>
+                      <div class="col-md-6">
+                        <label for="praeligibel-end" class="form-label small fw-semibold">Tanggal &amp; Jam Tutup</label>
+                        <input type="datetime-local" id="praeligibel-end" class="form-control form-control-sm" value="${escapeHtml(praCfg.endDate)}">
+                      </div>
+                    </div>
+                    <div id="praeligibel-mode-hint" class="form-text mt-2"></div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label for="praeligibel-message" class="form-label fw-bold small">Pesan Saat Pra-Eligibel Ditutup</label>
+                    <textarea id="praeligibel-message" class="form-control form-control-sm" rows="2" placeholder="Contoh: Pengumuman pra-eligibel dibuka setelah verifikasi selesai.">${escapeHtml(praCfg.message)}</textarea>
+                  </div>
+
+                  <div class="mt-auto d-flex justify-content-end">
+                    <button type="button" class="btn btn-warning fw-bold px-4" onclick="savePreEligibleAccessSettings()">
+                      <i class="bi bi-cloud-arrow-up me-2"></i>SIMPAN PRA-ELIGIBEL
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- KARTU 4: AKSES PENGUMUMAN ELIGIBEL FINAL -->
+              <div class="col-lg-6">
+                <div class="card p-4 h-100">
+                  <h5 class="fw-bold mb-3 pb-2 border-bottom">
+                    <i class="bi bi-patch-check me-2 text-success"></i>4. Pengumuman Eligibel Final
                   </h5>
 
                   <div class="alert ${annAlertClass} py-2 px-3 mb-3">
@@ -1186,7 +2205,7 @@
                   </div>
 
                   <div class="mb-3">
-                    <label for="pengumuman-mode" class="form-label fw-bold small">Mode Pengumuman Eligibel</label>
+                    <label for="pengumuman-mode" class="form-label fw-bold small">Mode Pengumuman Eligibel Final</label>
                     <select id="pengumuman-mode" class="form-select" onchange="updateAnnouncementModeUI()">
                       <option value="OTOMATIS" ${annCfg.mode === 'OTOMATIS' ? 'selected' : ''}>Otomatis Berbasis Tanggal (Ikuti Jadwal)</option>
                       <option value="BUKA" ${annCfg.mode === 'BUKA' ? 'selected' : ''}>Buka Pengumuman Manual (Selalu Terbuka)</option>
@@ -1196,7 +2215,7 @@
 
                   <div id="pengumuman-schedule-box" class="p-3 rounded border bg-light mb-3">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                      <span class="fw-bold small text-success"><i class="bi bi-calendar-event me-1"></i>Jadwal Tanggal &amp; Jam Pengumuman</span>
+                      <span class="fw-bold small text-success"><i class="bi bi-calendar-event me-1"></i>Jadwal Tanggal &amp; Jam Pengumuman Final</span>
                       <button type="button" class="btn btn-link btn-sm text-decoration-none p-0" onclick="clearAnnouncementDates()">
                         <i class="bi bi-x-circle me-1"></i>Kosongkan
                       </button>
@@ -1215,33 +2234,34 @@
                   </div>
 
                   <div class="mb-3">
-                    <label for="pengumuman-message" class="form-label fw-bold small">Pesan Saat Pengumuman Eligibel Ditutup</label>
-                    <textarea id="pengumuman-message" class="form-control form-control-sm" rows="3" placeholder="Contoh: Pengumuman hasil eligibel dibuka tanggal ...">${escapeHtml(annCfg.message)}</textarea>
+                    <label for="pengumuman-message" class="form-label fw-bold small">Pesan Saat Pengumuman Final Ditutup</label>
+                    <textarea id="pengumuman-message" class="form-control form-control-sm" rows="2" placeholder="Contoh: Pengumuman hasil eligibel final dibuka tanggal ...">${escapeHtml(annCfg.message)}</textarea>
                   </div>
 
                   <div class="mt-auto d-flex justify-content-end">
                     <button type="button" class="btn btn-success fw-bold px-4" onclick="saveEligibleAnnouncementSettings()">
-                      <i class="bi bi-cloud-arrow-up me-2"></i>SIMPAN PENGUMUMAN
+                      <i class="bi bi-cloud-arrow-up me-2"></i>SIMPAN PENGUMUMAN FINAL
                     </button>
                   </div>
                 </div>
               </div>
 
-              <!-- PANDUAN -->
+              <!-- PANDUAN ALUR -->
               <div class="col-12">
                 <div class="card p-4">
-                  <h6 class="fw-bold text-primary mb-2"><i class="bi bi-info-circle me-2"></i>Panduan Penggunaan</h6>
-                  <ul class="small text-muted ps-3 mb-0">
-                    <li class="mb-1"><strong>Akses Portal Murid:</strong> Mengontrol apakah murid dapat login dan melihat Rekap Nilai Rapor, Nilai TKA, serta Nilai Prestasi.</li>
-                    <li class="mb-1"><strong>Akses Khusus Pengumuman Eligibel:</strong> Mengontrol khusus tampilan status <em>Eligibel / Tidak Eligibel</em> serta Peringkat Lokal &amp; Global milik murid. Data peringkat tidak dikirim ke murid selama pengumuman ditutup.</li>
-                    <li class="mb-1"><strong>Skenario Umum:</strong> Buka <em>Portal Murid</em> lebih awal agar murid dapat memverifikasi nilai rapor/TKA/prestasi, sementara <em>Pengumuman Eligibel</em> tetap ditutup atau dijadwalkan otomatis ke hari pengumuman resmi.</li>
-                    <li>Kedua pengaturan ini <strong>hanya berlaku untuk akun Murid</strong>. Akun Admin dan Operator tetap dapat mengakses seluruh menu kapan saja.</li>
-                  </ul>
+                  <h6 class="fw-bold text-primary mb-2"><i class="bi bi-info-circle me-2"></i>Alur Tahapan Seleksi E-Eligible</h6>
+                  <ol class="small text-muted ps-3 mb-0">
+                    <li class="mb-1"><strong>Tahap 1 — Portal &amp; Verifikasi Data:</strong> Murid login, memeriksa biodata, nilai rapor, nilai TKA, dan skor prestasi, lalu mengonfirmasi <em>Semua Data Sudah Benar</em> atau melaporkan bagian yang salah ke Operator.</li>
+                    <li class="mb-1"><strong>Tahap 2 — Pengumuman Pra-Eligibel &amp; Pengunduran Diri:</strong> Setelah verifikasi &amp; perbaikan selesai, jalankan <em>Generate Ranking</em> lalu buka jadwal Pra-Eligibel. Murid yang masuk draft Eligibel dapat mengunggah Surat Pengunduran Diri pada interval waktu ini.</li>
+                    <li class="mb-1"><strong>Tahap 3 — Pengumuman Eligibel Final:</strong> Jika ada pengunduran diri yang disetujui pada menu <em>Pengunduran Diri</em>, jalankan ulang <em>Generate Ranking</em>. Bila tidak ada pengunduran diri sampai batas waktu Pra-Eligibel, hasil Eligibel Final langsung diumumkan sesuai jadwalnya.</li>
+                  </ol>
                 </div>
               </div>
             </div>
           `;
           updateAccessModeUI();
+          updateVerificationAccessModeUI();
+          updatePreEligibleAccessModeUI();
           updateAnnouncementModeUI();
         })
         .withFailureHandler(err => {
@@ -1303,6 +2323,114 @@
           notify(false, "Koneksi Gagal", "Tidak dapat terhubung ke server untuk menyimpan pengaturan akses.");
         })
         .saveStudentAccessConfig({ mode, startDate, endDate, message });
+    }
+
+    function updateVerificationAccessModeUI() {
+      const modeEl = document.getElementById('verifikasi-mode');
+      const box = document.getElementById('verifikasi-schedule-box');
+      const hint = document.getElementById('verifikasi-mode-hint');
+      if (!modeEl || !box || !hint) return;
+
+      const mode = modeEl.value;
+      if (mode === 'OTOMATIS') {
+        box.style.opacity = '1';
+        hint.innerHTML = '<i class="bi bi-check-circle text-success me-1"></i>Interval tanggal di atas <strong>aktif digunakan</strong> untuk masa verifikasi data murid.';
+      } else if (mode === 'BUKA') {
+        box.style.opacity = '0.65';
+        hint.innerHTML = '<i class="bi bi-exclamation-circle text-warning me-1"></i>Mode <strong>Buka Manual</strong> dipilih. Murid dapat langsung mengirim verifikasi data.';
+      } else {
+        box.style.opacity = '0.65';
+        hint.innerHTML = '<i class="bi bi-exclamation-circle text-danger me-1"></i>Mode <strong>Tutup Manual</strong> dipilih. Formulir verifikasi murid dikunci.';
+      }
+    }
+
+    function clearVerificationAccessDates() {
+      const startEl = document.getElementById('verifikasi-start');
+      const endEl = document.getElementById('verifikasi-end');
+      if (startEl) startEl.value = '';
+      if (endEl) endEl.value = '';
+    }
+
+    function saveVerificationAccessSettings() {
+      const mode = document.getElementById('verifikasi-mode')?.value || 'OTOMATIS';
+      const startDate = document.getElementById('verifikasi-start')?.value || '';
+      const endDate = document.getElementById('verifikasi-end')?.value || '';
+      const message = document.getElementById('verifikasi-message')?.value.trim() || '';
+
+      if (startDate && endDate && startDate > endDate) {
+        return notify(false, "Jadwal Tidak Valid", "Tanggal & Jam Tutup verifikasi tidak boleh lebih awal dari Tanggal & Jam Buka.");
+      }
+
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (res && res.success) {
+            notify(true, "Pengaturan Disimpan", "Pengaturan masa verifikasi data murid berhasil diperbarui (" + (res.status?.label || mode) + ").");
+            renderStudentAccessPage();
+          } else {
+            notify(false, "Gagal Menyimpan", res?.message || "Terjadi kesalahan saat menyimpan pengaturan verifikasi.");
+          }
+        })
+        .withFailureHandler(() => {
+          showLoading(false);
+          notify(false, "Koneksi Gagal", "Tidak dapat terhubung ke server.");
+        })
+        .saveVerificationAccessConfig({ mode, startDate, endDate, message });
+    }
+
+    function updatePreEligibleAccessModeUI() {
+      const modeEl = document.getElementById('praeligibel-mode');
+      const box = document.getElementById('praeligibel-schedule-box');
+      const hint = document.getElementById('praeligibel-mode-hint');
+      if (!modeEl || !box || !hint) return;
+
+      const mode = modeEl.value;
+      if (mode === 'OTOMATIS') {
+        box.style.opacity = '1';
+        hint.innerHTML = '<i class="bi bi-check-circle text-success me-1"></i>Interval tanggal di atas <strong>aktif digunakan</strong> untuk pengumuman pra-eligibel &amp; pengunduran diri.';
+      } else if (mode === 'BUKA') {
+        box.style.opacity = '0.65';
+        hint.innerHTML = '<i class="bi bi-exclamation-circle text-warning me-1"></i>Mode <strong>Buka Manual</strong> dipilih. Draft pra-eligibel &amp; upload surat pengunduran diri terbuka.';
+      } else {
+        box.style.opacity = '0.65';
+        hint.innerHTML = '<i class="bi bi-exclamation-circle text-danger me-1"></i>Mode <strong>Tutup Manual</strong> dipilih. Pra-eligibel disembunyikan dari portal murid.';
+      }
+    }
+
+    function clearPreEligibleAccessDates() {
+      const startEl = document.getElementById('praeligibel-start');
+      const endEl = document.getElementById('praeligibel-end');
+      if (startEl) startEl.value = '';
+      if (endEl) endEl.value = '';
+    }
+
+    function savePreEligibleAccessSettings() {
+      const mode = document.getElementById('praeligibel-mode')?.value || 'OTOMATIS';
+      const startDate = document.getElementById('praeligibel-start')?.value || '';
+      const endDate = document.getElementById('praeligibel-end')?.value || '';
+      const message = document.getElementById('praeligibel-message')?.value.trim() || '';
+
+      if (startDate && endDate && startDate > endDate) {
+        return notify(false, "Jadwal Tidak Valid", "Tanggal & Jam Tutup pra-eligibel tidak boleh lebih awal dari Tanggal & Jam Buka.");
+      }
+
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(res => {
+          showLoading(false);
+          if (res && res.success) {
+            notify(true, "Pengaturan Disimpan", "Pengaturan pra-eligibel berhasil diperbarui (" + (res.status?.label || mode) + ").");
+            renderStudentAccessPage();
+          } else {
+            notify(false, "Gagal Menyimpan", res?.message || "Terjadi kesalahan saat menyimpan pengaturan pra-eligibel.");
+          }
+        })
+        .withFailureHandler(() => {
+          showLoading(false);
+          notify(false, "Koneksi Gagal", "Tidak dapat terhubung ke server.");
+        })
+        .savePreEligibleAccessConfig({ mode, startDate, endDate, message });
     }
 
     function updateAnnouncementModeUI() {
